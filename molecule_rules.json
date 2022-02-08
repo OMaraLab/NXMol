@@ -1,0 +1,35 @@
+{
+  "ruleset_name": "molecule",
+  "graph_attributes": {
+    "required": {
+      "net_charge": "int"
+    },
+    "optional": {
+      "molid": "int"
+    }
+  },
+  "node_attributes":  {
+    "required": {
+
+    },
+    "optional": {
+
+    }
+  },
+  "edge_attributes": {
+    "required": {
+
+    },
+    "optional": {
+
+    }
+  },
+  "additional_attributes": {
+    "required": {
+
+    },
+    "optional": {
+      "dihedrals": "dict"
+    }
+  }
+}
