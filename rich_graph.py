@@ -7,17 +7,24 @@ class RichGraph(nx.Graph):
     which can be parsed to numerous common file formats and be controlled more tightly.
     """
 
-    def __init__(self, rules, attributes: dict):
+    def __init__(self):
 
-
-
-        super().__init__(attributes)
+        # init super class
+        super().__init__()
 
         # can specify rules to adhere by in creating graph data structure, specified by a json file
         self.rules = {}
 
         # can store information about sub graphs
         self.sub_graphs = {}  # or sub-graph? i.e. can store dihedrals as an index of (a1, a2, a3) or (e1, e2, e3)
+
+        self.all_edge_dict = {"weight": 1}
+
+        # overriding
+        self.edge_attr_dict_factory = self.single_edge_dict
+
+    def single_edge_dict(self):
+        return self.all_edge_dict
 
 
 class SubGraph:
@@ -29,3 +36,10 @@ class SubGraph:
     def __init__(self, **kwargs):
         self.index = (None, None)
         self.attributes = {kwargs}
+
+
+if __name__ == "__main__":
+
+    molecule = RichGraph()
+    molecule.add_edge(2, 1)
+    print(molecule[2][1])
