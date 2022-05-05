@@ -1,28 +1,41 @@
 import networkx as nx
+from typing import Dict
 
 
-class MolecularEntity(nx.Graph):
+class MolecularEntity:
     """
-    Class representing a molecular entity, i.e. with a unique structural connectivity and
-    stereo-isomeric form. This object inherits from networkx to represent
-    a molecule as a graph. This can be parsed to numerous common string formats.
+    Class representing a molecular entity, i.e. with a unique structural connectivity
+    represented as a graph and stereo-isomeric form. This object contains a networkx graph to represent
+    te . This can be parsed to numerous common string formats.
     """
 
     @property
     def atoms(self):
-        return self.nodes
+        return self.graph.nodes
 
     @property
-    def bonds(self):
-        return self.edges
+    def edges(self):
+        return self.graph.edges
+
+    @property
+    def graph(self):
+        return self.graph
+
+    @graph.setter
+    def graph(self, value):
+        self._graph = value
+
+    conformers = dict
 
     def __init__(self):
 
-        # init super class
-        super().__init__()
+        # init graph
+        self.graph = nx.Graph()
 
-        self.dihedrals = {}  # but these would be of a conformer??
-        self.conformers = {}  # ??
+        # conformers of this molecular entity
+        self.conformers = {}
+
+        # other properties
 
 
 class Conformer(MolecularEntity):
@@ -30,11 +43,12 @@ class Conformer(MolecularEntity):
     Represents an individual conformational state of a molecular entity.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self):
 
         # init super class
         super().__init__()
-        self.attributes = {kwargs}
+        self.attributes = {}
+        self.dihedrals = {}
 
 
 class Fragment(MolecularEntity):
@@ -42,9 +56,8 @@ class Fragment(MolecularEntity):
     Represents information about a fragment of the graph object. I.e. a collection of nodes/edges.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         self.index = (None, None)
-        self.attributes = {kwargs}
 
 
 class Atom():
@@ -65,22 +78,22 @@ if __name__ == "__main__":
 
     molecule = MolecularEntity()
     #molecule.add_edge()
-    molecule.add_node(1)
-    molecule.add_node(2)
-    molecule.add_edge(2, 1)
+    molecule.graph.add_node(1)
+    molecule.graph.add_node(2)
+    molecule.graph.add_edge(2, 1)
     print(molecule.atoms)
-    print(molecule.bonds)
-    print(molecule.nodes)
+    print(molecule.graph.bonds)
+    print(molecule.graph.nodes)
     print(molecule.edges)
 
     print("Atoms: ")
-    print(molecule[1])
-    print(molecule[2])
+    print(molecule.graph[1])
+    print(molecule.graph[2])
 
     print("Bonds: ")
-    print(molecule[1][2])
-    print(molecule[2][1])
+    print(molecule.graph[1][2])
+    print(molecule.graph[2][1])
     e = [('a', 'b', 0.3), ('b', 'c', 0.9), ('a', 'c', 0.5), ('c', 'd', 1.2)]
-    molecule.add_weighted_edges_from(e)
+    molecule.graph.add_weighted_edges_from(e)
     print(nx.dijkstra_path(molecule, 'a', 'd'))
 
