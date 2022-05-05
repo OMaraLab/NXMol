@@ -1,5 +1,4 @@
 import networkx as nx
-from typing import Dict
 
 
 class MolecularEntity:
@@ -14,12 +13,12 @@ class MolecularEntity:
         return self.graph.nodes
 
     @property
-    def edges(self):
+    def bonds(self):
         return self.graph.edges
 
     @property
     def graph(self):
-        return self.graph
+        return self._graph
 
     @graph.setter
     def graph(self, value):
@@ -30,7 +29,7 @@ class MolecularEntity:
     def __init__(self):
 
         # init graph
-        self.graph = nx.Graph()
+        self._graph = nx.Graph()
 
         # conformers of this molecular entity
         self.conformers = {}
@@ -48,7 +47,17 @@ class Conformer(MolecularEntity):
         # init super class
         super().__init__()
         self.attributes = {}
+        self.angles = {}
         self.dihedrals = {}
+        self.qmProperties = {}
+
+        # RMSD fit
+
+    def rmsdFit(self):
+        return
+
+    def writePDB(self):
+        return
 
 
 class Fragment(MolecularEntity):
@@ -60,11 +69,25 @@ class Fragment(MolecularEntity):
         self.index = (None, None)
 
 
-class Atom():
+class Atom:
+    element = None
+    valence = None
+
+    def get(self):
+        pass
+
+
+
+class Atom2D(Atom):
 
     def __init__(self):
         pass
 
+
+class Atom3D(Atom):
+
+    def __init__(self):
+        pass
 
 class Bond():
 
@@ -82,9 +105,9 @@ if __name__ == "__main__":
     molecule.graph.add_node(2)
     molecule.graph.add_edge(2, 1)
     print(molecule.atoms)
-    print(molecule.graph.bonds)
+    print(molecule.graph.edges)
     print(molecule.graph.nodes)
-    print(molecule.edges)
+    print(molecule.bonds)
 
     print("Atoms: ")
     print(molecule.graph[1])
@@ -95,5 +118,5 @@ if __name__ == "__main__":
     print(molecule.graph[2][1])
     e = [('a', 'b', 0.3), ('b', 'c', 0.9), ('a', 'c', 0.5), ('c', 'd', 1.2)]
     molecule.graph.add_weighted_edges_from(e)
-    print(nx.dijkstra_path(molecule, 'a', 'd'))
+    print(nx.dijkstra_path(molecule.graph, 'a', 'd'))
 
