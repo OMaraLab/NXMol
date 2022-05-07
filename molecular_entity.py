@@ -1,62 +1,5 @@
 import networkx as nx
-
-
-class _2DChemicalObj:
-    """
-    Class representing a molecular entity, i.e. with a unique structural connectivity
-    represented as a graph and stereo-isomeric form. This object contains a networkx graph to represent
-    te . This can be parsed to numerous common string formats.
-    """
-    def __init__(self, **kwargs):
-
-        if 'smiles' in kwargs:
-            # init using smils
-            pass
-        # iterate for all init methods
-
-
-        # init graph
-        self._graph = nx.Graph()
-
-        # conformers of this molecular entity
-        self.conformers = {}
-
-        # other properties
-
-    @property
-    def atoms(self):
-        return self.graph.nodes
-
-    @property
-    def bonds(self):
-        return self.graph.edges
-
-    @property
-    def graph(self):
-        return self._graph
-
-    @graph.setter
-    def graph(self, value):
-        self._graph = value
-
-    def add_atom(self, atom: Atom2D):
-        if not isinstance(atom, Atom2D): # not sure if we actually want to add atoms this way
-            # might make it  easier to enforce minimum information
-            raise TypeError('atom must be of type Atom2D')
-
-    def add_bond(self, bond: Bond):
-        if not isinstance(bond, bond):
-            raise TypeError('bond must be of type Bond')
-
-
-class _3DChemicalObj(_2DChemicalObj):
-    def __init__(self):
-        super().__init__()
-
-    def add_atom(self, atom: Atom3D):
-        if not isinstance(atom, Atom3D): # not sure if we actually want to add atoms this way
-            # might make it  easier to enforce minimum information
-            raise TypeError('atom must be of type Atom2D')
+from base_objects import _2DChemicalObj, _3DChemicalObj
 
 
 class Molecule_2D(_2DChemicalObj):
@@ -84,49 +27,6 @@ class Molecule_2D(_2DChemicalObj):
 class Molecule_3D(_3DChemicalObj, Molecule_2D):
     def __init__(self):
         super().__init__()
-
-class Fragment_2D(_2DChemicalObj):
-    """
-    Represents information about a fragment of the graph object. I.e. a collection of nodes/edges.
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.index = (None, None)
-
-class Fragment_3D(_3DChemicalObj,Fragment_2D):
-    def __init__(self):
-        super().__init__()
-
-
-class _Atom:
-    element = None
-    valence = None
-
-    def get(self):
-        pass
-
-    def __getitem__(self, item):
-        # Will prbably need to set up this for networkx to properly interface
-        pass
-
-
-
-class Atom2D(_Atom):
-
-    def __init__(self):
-        pass
-
-
-class Atom3D(_Atom):
-
-    def __init__(self):
-        pass
-
-class Bond:
-
-    def __init__(self):
-        pass
 
 
 if __name__ == "__main__":
