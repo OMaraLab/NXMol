@@ -1,16 +1,20 @@
 import networkx as nx
 from base_objects import _2DChemicalObj, _3DChemicalObj
+from atombond import Atom2D, Atom3D, Bond2D, Bond3D
+from typing import List, Union
 
-
-class Molecule_2D(_2DChemicalObj):
+class Molecule2D(_2DChemicalObj):
     """
     Represents an individual conformational state of a molecular entity.
     """
 
-    def __init__(self):
+    def __init__(self,atoms: List[Atom2D] = [],
+                 bonds: List[Union[str, str, Bond2D]] = [],
+                 name: str = ''
+                 ):
 
         # init super class
-        super().__init__()
+        super().__init__(atoms, bonds,  name)
         self.attributes = {}
         self.angles = {}
         self.dihedrals = {}
@@ -24,16 +28,19 @@ class Molecule_2D(_2DChemicalObj):
     def writePDB(self):
         return
 
-class Molecule_3D(_3DChemicalObj, Molecule_2D):
-    def __init__(self):
-        super().__init__()
+class Molecule3D(_3DChemicalObj, Molecule2D):
+    def __init__(self, atoms: List[Atom2D] = [],
+                 bonds: List[Union[str, str, Bond2D]] = [],
+                 name: str = ''
+                 ):
+        super().__init__(atoms, bonds,name)
 
 
 if __name__ == "__main__":
 
     # testing
 
-    molecule = MolecularEntity()
+    molecule = Molecule3D()
     #molecule.add_edge()
     molecule.graph.add_node(1)
     molecule.graph.add_node(2)
@@ -53,4 +60,6 @@ if __name__ == "__main__":
     e = [('a', 'b', 0.3), ('b', 'c', 0.9), ('a', 'c', 0.5), ('c', 'd', 1.2)]
     molecule.graph.add_weighted_edges_from(e)
     print(nx.dijkstra_path(molecule.graph, 'a', 'd'))
+
+    test = Molecule2D([Atom2D('C1', 'C')])
 

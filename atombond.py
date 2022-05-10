@@ -1,35 +1,73 @@
-class _Atom:
-    def __init__(self):
-        self.element = None
-        self.valence = None
-        self.name = ''
+class AtomIndexError(Exception):
+    pass
 
-    def get(self):
-        pass
+class AtomIndexType(Exception):
+    pass
+
+class _Atom:
+    def __init__(self, name, element, index: dict = {}, **kwargs):
+        # TODO: Possibly rework the atom class to repace the atom dict factory for more consistency
+        self.element = element
+        # may or may not check element types
+
+        self._index = index
+        self._index['name'] = name
+        self._attributes = {}
+
+        # self.name = name
+        self.valence = None
+
+        if 'valence' in kwargs:
+            self.valence = kwargs['valence']
+
+    def get_index(self, id_type):
+        if id_type in self._index:
+            return self._index[id_type]
+        else:
+            raise AtomIndexError(f'Atom not instanciated using method associated with {id_type}')
+
+    @property
+    def name(self):
+        return self._index['name']
+
+    @name.setter
+    def name(self, value):
+        self._index['name'] = value
+
+    def get_index(self, index_type):
+        if index_type not in self._index.keys():
+            raise AtomIndexError('Index type not associated for this atom')
+        return self._index[index_type]
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({self.name})'
+        return f'{self.__class__.__name__}("{self.name}", "{self.element}")'
 
     def __getitem__(self, item):
+        # TODO: Might just make this class a subclass of dictionary
         # Will prbably need to set up this for networkx to properly interface
-        pass
+        return self._attributes.__getitem__(item)
 
     def __setitem__(self, key, value):
         # might need to set this up given the way networkx interfaces
-        self.__setattr__(key, value)
+        self._attributes.__setitem__(key, value)
+
+    def upate(self):
+        raise NotImplemented
 
 
 class Atom2D(_Atom):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, name, element,  **kwargs):
+        super().__init__(name, element,  **kwargs)
 
 
 class Atom3D(_Atom):
 
-    def __init__(self):
-        super().__init__()
-
+    def __init__(self, name, element, x, y, z, **kwargs):
+        super().__init__(name, element, **kwargs)
+        self.x = x
+        self.y = y
+        self.z = z
 
 class _Bond:
 

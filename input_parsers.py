@@ -2,3 +2,92 @@
 Parsers for the creation of MolecularEntity objects and their derivatives.
 """
 
+from molecular_entity import Molecule2D, Molecule3D
+from atombond import Atom2D, Atom3D, Bond3D, Bond2D
+
+############# mol2 Parser
+
+def _atom_for_atom_line(line: str):
+    index_str, name_str, x, y, z, sybil_atom_type, _, _, partial_charge = line.split()
+    element, *_ = sybil_atom_type.split('.')
+
+    return (
+        Atom3D(
+            index={'mol2': int(index_str)}, # currently and arbitrary dictionary
+            name=f'{element}{index_str}',
+            element=element,
+            valence=None,
+            x=float(x),
+            y=float(y),
+            z=float(z)
+            # capped=True,
+        ),
+        float(partial_charge),
+    )
+
+AROMATIC_BOND, AMIDE_BOND = 'ar', 'am'
+def _bond_for_atom_line(line: str):
+    bond_label, atom_id_1, atom_id_2, bond_order_str = line.split()
+    if bond_order_str == AROMATIC_BOND:
+        bond_order = 1.5
+    elif bond_order_str == AMIDE_BOND:
+        bond_order = 1
+    else:
+        bond_order = int(bond_order_str)
+    return ([int(atom_id_1), int(atom_id_2)], bond_order)
+
+
+def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
+    """
+    Primarily adapted from fragment_capping/helpers/molecule.py
+    :param mol2_str:
+    :return:
+    """
+    assert mol2_str.count('@<TRIPOS>MOLECULE'), 'Error: MOL2 file does not start with "@<TRIPOS>MOLECULE"'
+    assert mol2_str.count('@<TRIPOS>MOLECULE') == 1, 'Only one molecule at a time'
+
+
+    read_lines, atoms, bonds = False, [], []
+    for (i, line) in enumerate(mol2_str.splitlines()):
+        if i == 1:
+            molecule_name = line
+        elif line.startswith('@<TRIPOS>ATOM'):
+            container, line_reading_fct, read_lines = atoms, _atom_for_atom_line, True
+        elif line.startswith('@<TRIPOS>BOND'):
+            container, line_reading_fct, read_lines = bonds, _bond_for_atom_line, True
+        elif line.startswith('@'):
+            read_lines = False
+        else:
+            if read_lines:
+                container.append(line_reading_fct(line))
+
+    bond_objects = []
+    for b in bonds:
+        (mol2_id1, mol2_id2), bond_order = b
+        for a in atoms:
+            a1_name = [a.name for (a,_) in atoms if a.get_index('mol2')==mol2_id1][0]
+            a2_name = [a.name for (a,_) in atoms if a.get_index('mol2')==mol2_id2][0]
+            bond_objects.append((a1_name, a2_name, Bond3D()))
+
+    total_net_charge = sum(partial_charge for (atom, partial_charge) in atoms)
+    assert abs(total_net_charge - round(total_net_charge)) <= 0.01, total_net_charge
+
+    return Molecule3D(
+        [atom for (atom, _) in atoms],
+        bond_objects,
+        # formal_charges={atom.index: round(partial_charge) for (atom, partial_charge) in atoms},
+        # bond_orders={bond: bond_order for (bond, bond_order) in bonds},
+        name=molecule_name,
+        # net_charge=round(total_net_charge),
+    )
+
+
+if __name__=='__main__':
+    with open('test_data/benxene.mol2.txt','r') as f:
+
+        test = mol2_to_Molecule3D(f.read())
+
+        import networkx as nx
+
+        nx.set_node_attributes(test.graph,'test', 'test')
+        nx.get_node_attributes(test.graph, 'test')
