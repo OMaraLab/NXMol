@@ -1,10 +1,11 @@
 import networkx as nx
 from typing import List, Union
 
-from atom_bond import Atom2D, Atom3D
-from atom_bond import Bond2D, Bond3D
+from chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D
+from chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
 
 # TODO: might rework this to replace the foactory classes for proper integration
+
 
 class _2DChemicalObj:
     """
@@ -64,7 +65,7 @@ class _2DChemicalObj:
 
     def add_bond(self, atom1_name: str, atom2_name: str, bond: Bond2D) -> None:
         """
-        TODO Need too decide if a bond will reference atom names or actual atom elements, or just elements
+        TODO Need to decide if a bond will reference atom names or actual atom elements, or just elements
         and then adding a bond will create the link
         :param bond:
         :return:

@@ -1,7 +1,7 @@
 """
 Contains methods for performing transformations on molecular entities etc.
 """
-from chemistry_data_structure.molecular_entity import Molecule2D
+from chemistry_data_structure.objects.molecular_entity import Molecule2D
 
 
 def gen_config_trans_struct_2D(mol_start: Molecule2D,

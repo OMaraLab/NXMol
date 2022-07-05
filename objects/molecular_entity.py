@@ -1,6 +1,6 @@
 import networkx as nx
-from base_objects import _2DChemicalObj, _3DChemicalObj
-from atom_bond import Atom2D, Atom3D, Bond2D, Bond3D
+from chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
+from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D
 from typing import List, Union
 
 

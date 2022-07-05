@@ -1,3 +1,11 @@
+"""
+Contains abstract and implemented classes representing atoms and bonds.
+"""
+
+from typing import Tuple
+
+Coordinate = Tuple[float, float, float]
+
 class AtomIndexError(Exception):
     pass
 
@@ -67,11 +75,9 @@ class Atom2D(_Atom):
 
 class Atom3D(_Atom):
 
-    def __init__(self, name, element, x, y, z, **kwargs):
+    def __init__(self, name, element, coordinates, **kwargs):
         super().__init__(name, element, **kwargs)
-        self.x = x
-        self.y = y
-        self.z = z
+        self.coordinates = coordinates
 
 class _Bond:
 
