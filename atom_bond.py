@@ -5,8 +5,12 @@ class AtomIndexType(Exception):
     pass
 
 class _Atom:
-    def __init__(self, name, element, index: dict = {}, **kwargs):
-        # TODO: Possibly rework the atom class to repace the atom dict factory for more consistency
+    def __init__(self,
+                 name,
+                 element,
+                 index: dict = {},
+                 **kwargs):
+        # TODO: Possibly rework the atom class to replace the atom dict factory for more consistency
         self.element = element
         # may or may not check element types
 
@@ -24,7 +28,7 @@ class _Atom:
         if id_type in self._index:
             return self._index[id_type]
         else:
-            raise AtomIndexError(f'Atom not instanciated using method associated with {id_type}')
+            raise AtomIndexError(f'Atom not instantiated using method associated with {id_type}')
 
     @property
     def name(self):

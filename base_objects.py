@@ -1,8 +1,8 @@
 import networkx as nx
 from typing import List, Union
 
-from atombond import Atom2D, Atom3D
-from atombond import Bond2D, Bond3D
+from atom_bond import Atom2D, Atom3D
+from atom_bond import Bond2D, Bond3D
 
 # TODO: might rework this to replace the foactory classes for proper integration
 
@@ -12,7 +12,8 @@ class _2DChemicalObj:
     represented as a graph and stereo-isomeric form. This object contains a networkx graph to represent
     te . This can be parsed to numerous common string formats.
     """
-    def __init__(self,atoms: List[Atom2D] = [],
+    def __init__(self,
+                 atoms: List[Atom2D] = [],
                  bonds: List[Union[str, str, Bond2D]] = [],
                  name: str = ''
                  ):

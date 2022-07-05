@@ -1,14 +1,16 @@
 import networkx as nx
 from base_objects import _2DChemicalObj, _3DChemicalObj
-from atombond import Atom2D, Atom3D, Bond2D, Bond3D
+from atom_bond import Atom2D, Atom3D, Bond2D, Bond3D
 from typing import List, Union
+
 
 class Molecule2D(_2DChemicalObj):
     """
-    Represents an individual conformational state of a molecular entity.
+    Represents the 2D structure of a molecular entity.
     """
 
-    def __init__(self,atoms: List[Atom2D] = [],
+    def __init__(self,
+                 atoms: List[Atom2D] = [],
                  bonds: List[Union[str, str, Bond2D]] = [],
                  name: str = ''
                  ):
@@ -20,13 +22,6 @@ class Molecule2D(_2DChemicalObj):
         self.dihedrals = {}
         self.qmProperties = {}
 
-        # RMSD fit
-
-    def rmsdFit(self):
-        return
-
-    def writePDB(self):
-        return
 
 class Molecule3D(_3DChemicalObj, Molecule2D):
     def __init__(self, atoms: List[Atom2D] = [],
@@ -35,6 +30,11 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                  ):
         super().__init__(atoms, bonds,name)
 
+    def rmsdFit(self):
+        return
+
+    def writePDB(self):
+        return
 
 if __name__ == "__main__":
 
@@ -62,4 +62,5 @@ if __name__ == "__main__":
     print(nx.dijkstra_path(molecule.graph, 'a', 'd'))
 
     test = Molecule2D([Atom2D('C1', 'C')])
+
 
