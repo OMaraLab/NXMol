@@ -20,12 +20,6 @@ class _Atom:
         if 'valence' in kwargs:
             self.valence = kwargs['valence']
 
-    def get_index(self, id_type):
-        if id_type in self._index:
-            return self._index[id_type]
-        else:
-            raise AtomIndexError(f'Atom not instanciated using method associated with {id_type}')
-
     @property
     def name(self):
         return self._index['name']
@@ -51,7 +45,10 @@ class _Atom:
         # might need to set this up given the way networkx interfaces
         self._attributes.__setitem__(key, value)
 
-    def upate(self):
+    def __contains__(self, item):
+        return self._attributes.__contains__(item)
+
+    def update(self):
         raise NotImplemented
 
 
@@ -72,7 +69,27 @@ class Atom3D(_Atom):
 class _Bond:
 
     def __init__(self):
-        pass
+        self._attributes = {}
+
+
+    def __getitem__(self, item):
+        # TODO: Might just make this class a subclass of dictionary
+        # Will prbably need to set up this for networkx to properly interface
+        return self._attributes.__getitem__(item)
+
+    def __setitem__(self, key, value):
+        # might need to set this up given the way networkx interfaces
+        self._attributes.__setitem__(key, value)
+
+    def __contains__(self, item):
+        return self._attributes.__contains__(item)
+
+    def update(self):
+        raise NotImplementedError
+
+    def get(self, *args, **kwargs):
+        return self._attributes.get(*args, **kwargs)
+
 
 class Bond2D(_Bond):
     def __init__(self):

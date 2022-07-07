@@ -1,6 +1,6 @@
 import networkx as nx
-from base_objects import _2DChemicalObj, _3DChemicalObj
-from atombond import Atom2D, Atom3D, Bond2D, Bond3D
+from chemistry_data_structure.base_objects import _2DChemicalObj, _3DChemicalObj
+from chemistry_data_structure.atombond import Atom2D, Atom3D, Bond2D, Bond3D
 from typing import List, Union
 
 class Molecule2D(_2DChemicalObj):
@@ -27,6 +27,11 @@ class Molecule2D(_2DChemicalObj):
 
     def writePDB(self):
         return
+    #
+    # def index_map(self, index_target: str, index_input: str, index_input_value: str):
+    #     # assumption that all atoms have the same index template
+    #     temp_key = list(self._graph._node.keys())[0]
+    #     if index_target not in self._graph._node[temp_key]._index:
 
 class Molecule3D(_3DChemicalObj, Molecule2D):
     def __init__(self, atoms: List[Atom2D] = [],

@@ -1,8 +1,8 @@
 import networkx as nx
 from typing import List, Union
 
-from atombond import Atom2D, Atom3D
-from atombond import Bond2D, Bond3D
+from chemistry_data_structure.atombond import Atom2D, Atom3D
+from chemistry_data_structure.atombond import Bond2D, Bond3D
 
 # TODO: might rework this to replace the foactory classes for proper integration
 
@@ -48,9 +48,9 @@ class _2DChemicalObj:
     def graph(self):
         return self._graph
 
-    @graph.setter
-    def graph(self, value):
-        self._graph = value
+    # @graph.setter
+    # def graph(self, value):
+    #     self._graph = value
 
     def add_atom(self, atom: Atom2D) -> None:
         if not isinstance(atom, Atom2D): # not sure if we actually want to add atoms this way
@@ -75,6 +75,13 @@ class _2DChemicalObj:
             raise IndexError
 
         self._graph.add_edge(atom1_name, atom2_name, bond)
+
+    def get_atoms(self, index, index_type='name'):
+        if index_type=='name':
+            return [self._graph.nodes[i] for i in index]
+        else:
+
+            return [[a for a in self._graph._node.values() if a._index[index_type]==i][0] for i in index]
 
 
 

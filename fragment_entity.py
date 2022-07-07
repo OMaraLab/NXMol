@@ -1,4 +1,4 @@
-from base_objects import _2DChemicalObj, _3DChemicalObj
+from chemistry_data_structure.base_objects import _2DChemicalObj, _3DChemicalObj
 
 
 class Fragment_2D(_2DChemicalObj):
