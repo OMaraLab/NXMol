@@ -2,10 +2,13 @@
 Parsers for the creation of MolecularEntity objects and their derivatives.
 """
 
-from molecular_entity import Molecule2D, Molecule3D
-from atombond import Atom2D, Atom3D, Bond3D, Bond2D
+from chemistry_data_structure.objects.molecular_entity import Molecule2D, Molecule3D
+from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D, Atom2D
+from chemistry_data_structure.parsing.pdb import bonds_for_pdb_line, is_pdb_connect_line, pdb_atoms_in
+from functools import reduce
 
 ############# mol2 Parser
+
 
 def _atom_for_atom_line(line: str):
     index_str, name_str, x, y, z, sybil_atom_type, _, _, partial_charge = line.split()
@@ -13,7 +16,7 @@ def _atom_for_atom_line(line: str):
 
     return (
         Atom3D(
-            index={'mol2': int(index_str)}, # currently and arbitrary dictionary
+            index={'mol2': int(index_str)}, # currently an arbitrary dictionary
             name=f'{element}{index_str}',
             element=element,
             valence=None,
@@ -45,7 +48,6 @@ def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
     """
     assert mol2_str.count('@<TRIPOS>MOLECULE'), 'Error: MOL2 file does not start with "@<TRIPOS>MOLECULE"'
     assert mol2_str.count('@<TRIPOS>MOLECULE') == 1, 'Only one molecule at a time'
-
 
     read_lines, atoms, bonds = False, [], []
     for (i, line) in enumerate(mol2_str.splitlines()):
@@ -79,6 +81,41 @@ def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
         # bond_orders={bond: bond_order for (bond, bond_order) in bonds},
         name=molecule_name,
         # net_charge=round(total_net_charge),
+    )
+
+
+def pdb_to_Molecule2D(pdb_str: str, net_charge: int) -> Molecule2D:
+    """
+    Generate a 2D molecular graph structure from a PDB file.
+    :param pdb_str:
+    :param net_charge:
+    :return:
+    """
+
+    # assert statements
+
+    # TODO: this
+
+    bonds = reduce(
+        lambda acc, e: acc | e,
+        [
+            bonds_for_pdb_line(line)
+            for line in pdb_str.splitlines()
+            if is_pdb_connect_line(line)
+        ],
+        set(),
+    )
+
+    return Molecule2D(
+        {
+            atom.index: Atom2D(
+                atom.name,
+                atom.element.upper(),
+                valence=len([1 for bond in bonds if atom.index in bond]),
+            )
+            for atom in pdb_atoms_in(pdb_str)
+        },
+        bonds,
     )
 
 
