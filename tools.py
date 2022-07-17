@@ -2,6 +2,7 @@
 Contains methods for performing transformations on molecular entities etc.
 """
 from chemistry_data_structure.objects.molecular_entity import Molecule2D
+from networkx.algorithms import isomorphism
 
 
 def gen_config_trans_struct_2D(mol_start: Molecule2D,
@@ -17,6 +18,13 @@ def gen_config_trans_struct_2D(mol_start: Molecule2D,
     # assertions
     # all atoms have formal charge attributes
     # all bonds have bond order attributes
+    # an isomorphism exists between graphs
+    # all heavy atoms are the same
+
+    # 1. get a graph isomorphism mapping between start and end structure
+    graph_matcher = isomorphism.GraphMatcher(mol_start.graph, mol_end.graph)
+
+    print(graph_matcher.mapping)
 
 
     # TODO:

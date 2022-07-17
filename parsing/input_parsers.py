@@ -2,7 +2,7 @@
 Parsers for the creation of MolecularEntity objects and their derivatives.
 """
 
-from chemistry_data_structure.objects.molecular_entity import Molecule2D, Molecule3D
+from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D, Atom2D
 from chemistry_data_structure.parsing.pdb import bonds_for_pdb_line, is_pdb_connect_line, pdb_atoms_in
 from functools import reduce
@@ -20,9 +20,7 @@ def _atom_for_atom_line(line: str):
             name=f'{element}{index_str}',
             element=element,
             valence=None,
-            x=float(x),
-            y=float(y),
-            z=float(z)
+            coordinates=(float(x), float(y), float(z))
             # capped=True,
         ),
         float(partial_charge),
@@ -84,19 +82,35 @@ def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
     )
 
 
-def pdb_to_Molecule2D(pdb_str: str, net_charge: int) -> Molecule2D:
+def pdb_to_Molecule3D(pdb_str: str,
+                      mol_name: str = "",
+                      net_charge: int = None,
+                      assign_bond_orders_and_charges: bool = False) -> Molecule3D:
     """
-    Generate a 2D molecular graph structure from a PDB file.
+    Create a 3D molecular entity from a PDB file.
     :param pdb_str:
     :param net_charge:
     :return:
     """
 
-    # assert statements
+    # TODO: assert statements
 
-    # TODO: this
+    # get pdb atoms
+    pdb_atoms = [pdb_atom for pdb_atom in pdb_atoms_in(pdb_str)]
 
-    bonds = reduce(
+    # convert to chem_ds atoms
+    atoms = [
+        Atom3D(
+            index={'pdb': int(pdb_atom.index)},
+            name=pdb_atom.name,
+            element=pdb_atom.element,
+            coordinates=pdb_atom.coordinates
+        )
+        for pdb_atom in pdb_atoms
+    ]
+
+    # get pdb bonds
+    pdb_bonds = reduce(
         lambda acc, e: acc | e,
         [
             bonds_for_pdb_line(line)
@@ -106,21 +120,21 @@ def pdb_to_Molecule2D(pdb_str: str, net_charge: int) -> Molecule2D:
         set(),
     )
 
-    return Molecule2D(
-        {
-            atom.index: Atom2D(
-                atom.name,
-                atom.element.upper(),
-                valence=len([1 for bond in bonds if atom.index in bond]),
-            )
-            for atom in pdb_atoms_in(pdb_str)
-        },
+    print("PDB Bonds: ", pdb_bonds)
+
+    # convert to chem_ds bonds
+
+
+
+    return Molecule3D(
+        atoms,
         bonds,
+        name=mol_name
     )
 
 
 if __name__=='__main__':
-    with open('test_data/benxene.mol2.txt','r') as f:
+    with open('data/benxene.mol2.txt','r') as f:
 
         test = mol2_to_Molecule3D(f.read())
 
