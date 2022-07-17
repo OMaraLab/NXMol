@@ -50,9 +50,9 @@ class _2DChemicalObj:
     def graph(self):
         return self._graph
 
-    @graph.setter
-    def graph(self, value):
-        self._graph = value
+    # @graph.setter
+    # def graph(self, value):
+    #     self._graph = value
 
     def add_atom(self, atom: Atom2D) -> None:
         if not isinstance(atom, Atom2D): # not sure if we actually want to add atoms this way
@@ -77,6 +77,18 @@ class _2DChemicalObj:
             raise IndexError
 
         self._graph.add_edge(atom1_name, atom2_name, bond)
+
+    def get_atom(self):
+        # TODO
+        raise NotImplemented
+
+    def get_atoms(self, index: List, index_type='name'):
+        # return list of atom objects within the molecule object associated with the id
+        if index_type=='name':
+            return [self._graph.nodes[i] for i in index]
+        else:
+
+            return [[a for a in self._graph._node.values() if a._index[index_type]==i][0] for i in index]
 
 
 
