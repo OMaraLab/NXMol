@@ -3,7 +3,7 @@ Parsers for the creation of MolecularEntity objects and their derivatives.
 """
 
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
-from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D, Atom2D
+from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
 from chemistry_data_structure.parsing.pdb import bonds_for_pdb_line, is_pdb_connect_line, pdb_atoms_in
 from functools import reduce
 
@@ -120,11 +120,16 @@ def pdb_to_Molecule3D(pdb_str: str,
         set(),
     )
 
-    print("PDB Bonds: ", pdb_bonds)
+    #print("PDB Bonds: ", pdb_bonds)
 
-    # convert to chem_ds bonds
+    # convert pdb_bonds to chem_ds bonds
+    pdb_atom_index_name_map = {pdb_atom.index: pdb_atom.name for pdb_atom in pdb_atoms}
+    bonds = []
+    for pdb_bond in pdb_bonds:
+        a1_ind, a2_ind = list(pdb_bond)
+        bonds.append((pdb_atom_index_name_map[a1_ind], pdb_atom_index_name_map[a2_ind], Bond3D()))
 
-
+    #print("Bonds: ", bonds)
 
     return Molecule3D(
         atoms,
@@ -133,7 +138,7 @@ def pdb_to_Molecule3D(pdb_str: str,
     )
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     with open('data/benxene.mol2.txt','r') as f:
 
         test = mol2_to_Molecule3D(f.read())

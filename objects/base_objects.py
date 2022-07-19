@@ -84,12 +84,15 @@ class _2DChemicalObj:
 
     def get_atoms(self, index: List, index_type='name'):
         # return list of atom objects within the molecule object associated with the id
-        if index_type=='name':
+        if index_type == 'name':
             return [self._graph.nodes[i] for i in index]
         else:
 
             return [[a for a in self._graph._node.values() if a._index[index_type]==i][0] for i in index]
 
+    def draw_graph(self):
+        print("Drawing graph...")
+        nx.draw_networkx(self._graph)
 
 
 class _3DChemicalObj(_2DChemicalObj):

@@ -22,9 +22,23 @@ def gen_config_trans_struct_2D(mol_start: Molecule2D,
     # all heavy atoms are the same
 
     # 1. get a graph isomorphism mapping between start and end structure
-    graph_matcher = isomorphism.GraphMatcher(mol_start.graph, mol_end.graph)
+    #graph_matcher = isomorphism.GraphMatcher(mol_start.graph, mol_end.graph)
+    #print("Is G1 Subgraph Isomorphic to G2? ", graph_matcher.subgraph_is_isomorphic())
+    #graph_matcher.match()
+    #print("Subgraph monomorphisms: ", list(graph_matcher.subgraph_monomorphisms_iter()))
 
-    print(graph_matcher.mapping)
+    # ISMAGS implementation
+
+
+    #graph_matcher = isomorphism.GraphMatcher(mol_end.graph, mol_start.graph)
+    #print(graph_matcher.subgraph_is_isomorphic())
+
+    # petersen = nx.petersen_graph()
+    # ismags = nx.isomorphism.ISMAGS(petersen, petersen)
+    # isomorphisms = list(ismags.isomorphisms_iter(symmetry=False))
+    # len(isomorphisms)
+
+    print("Isomorphism mapping: ", graph_matcher.mapping)
 
 
     # TODO:
