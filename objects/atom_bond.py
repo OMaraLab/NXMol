@@ -1,7 +1,7 @@
 """
 Contains abstract and implemented classes representing atoms and bonds.
 """
-
+import copy
 from typing import Tuple
 
 Coordinate = Tuple[float, float, float]
@@ -39,11 +39,17 @@ class _Atom:
 
         # self.name = name
         self.valence = None
+        self.formal_charge = None
+        self.non_bonded_electrons = None
 
         if 'valence' in kwargs:
             self.valence = kwargs['valence']
+        elif 'formal_charge' in kwargs:
+            self.formal_charge = kwargs['formal_charge']
+        elif 'non_bonded_electrons' in kwargs:
+            self.non_bonded_electrons = kwargs['non_bonded_electrons']
 
-    def get_index(self, id_type: str):
+    def get_index(self, id_type: str = 'name'):
         """
         Method for getting the internal id by accessing the internal index dictionary
         :param id_type:
@@ -112,6 +118,15 @@ class _Atom:
         """
         return self._attributes.__contains__(item)
 
+    # def __copy__(self):
+    #     cls = self.__class__
+    #     result = cls.__new__(cls)
+    #     result.__dict__.update(self.__dict__)
+    #     return result
+
+    def copy(self):
+        return self.__dict__.copy()
+
     def update(self):
         """
         Pass thorough dictionary methods to the attributes dictionary to maintain compatibility with networkx
@@ -140,8 +155,11 @@ class Atom3D(_Atom):
 
 class _Bond:
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self._attributes = {}
+
+        if 'order' in kwargs:
+            self.order = kwargs['order']
 
     def __getitem__(self, item):
         # TODO: Might just make this class a subclass of dictionary
@@ -155,6 +173,9 @@ class _Bond:
     def __contains__(self, item):
         return self._attributes.__contains__(item)
 
+    def copy(self):
+        return self.__dict__.copy()
+
     def update(self):
         raise NotImplementedError
 
@@ -163,10 +184,10 @@ class _Bond:
 
 
 class Bond2D(_Bond):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 
 class Bond3D(_Bond):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)

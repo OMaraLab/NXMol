@@ -101,7 +101,7 @@ def pdb_to_Molecule3D(pdb_str: str,
     # convert to chem_ds atoms
     atoms = [
         Atom3D(
-            index={'pdb': int(pdb_atom.index)},
+            index={'numeric': int(pdb_atom.index)},
             name=pdb_atom.name,
             element=pdb_atom.element,
             coordinates=pdb_atom.coordinates
@@ -131,11 +131,18 @@ def pdb_to_Molecule3D(pdb_str: str,
 
     #print("Bonds: ", bonds)
 
-    return Molecule3D(
+    molecule = Molecule3D(
         atoms,
         bonds,
         name=mol_name
     )
+
+    # assign bond orders and charges with ILP
+    if assign_bond_orders_and_charges and net_charge is not None:
+        print("Assigning bond orders and charges...")
+        molecule.assign_bond_orders_and_charges_with_ILP(net_charge)
+
+    return molecule
 
 
 if __name__ == '__main__':
