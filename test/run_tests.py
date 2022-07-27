@@ -83,6 +83,18 @@ class NetworkxTests(unittest.TestCase):
         GM = isomorphism.GraphMatcher(G1, G2)
         self.assertEqual(True, GM.is_isomorphic())
 
+    def test_plotting(self):
+        import networkx as nx
+        import matplotlib.pyplot as plt
+
+        with open("test_data/_I08_allatom_optimised_geometry.pdb", "r") as t1_file:
+            test_mol = pdb_to_Molecule3D(t1_file.read())
+        nx.draw(test_mol.graph)
+        plt.show()
+        plt.cla()
+        nx.draw(test_mol.graph, with_labels=True)
+        plt.show()
+        plt.cla()
 
 if __name__ == '__main__':
     unittest.main()
