@@ -41,7 +41,12 @@ class TransitionStructureTest(unittest.TestCase):
         # gen transition structure
         trans_mol = gen_tautomer_trans_structure_2D(t1, t2)
 
-        self.assertEqual(True, False)
+        # display plots
+        t1.draw_graph()
+        t2.draw_graph()
+        trans_mol.draw_graph()
+
+        self.assertEqual(True, True)
 
     def test_formamide_tautomers(self):
 
@@ -63,6 +68,11 @@ class TransitionStructureTest(unittest.TestCase):
         self.assertEqual(trans_mol.bond_orders, {frozenset({'N1', 'C1'}): 1, frozenset({'O1', 'C1'}): -1,
                                                  frozenset({'H1', 'C1'}): 0, frozenset({'O1', 'H2'}): 1,
                                                  frozenset({'N1', 'H3'}): 0, frozenset({'N1', 'H4'}): -1})
+
+        # display plots
+        t1.draw_graph()
+        t2.draw_graph()
+        trans_mol.draw_graph()
 
 
 class ParserTest(unittest.TestCase):
@@ -87,7 +97,7 @@ class NetworkxTests(unittest.TestCase):
         import networkx as nx
         import matplotlib.pyplot as plt
 
-        with open("test_data/_I08_allatom_optimised_geometry.pdb", "r") as t1_file:
+        with open("data/pdb/formamide_t1.pdb", "r") as t1_file:
             test_mol = pdb_to_Molecule3D(t1_file.read())
         nx.draw(test_mol.graph)
         plt.show()

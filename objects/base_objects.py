@@ -4,6 +4,7 @@ import networkx as nx
 from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable
 
 import pulp
+from matplotlib import pyplot as plt
 
 from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS
 from chemistry_data_structure.helpers.io import write_to_debug
@@ -162,9 +163,29 @@ class _2DChemicalObj:
         print("Heavy atoms: ", heavy_atoms)
         return self.graph.subgraph(heavy_atoms)
 
-    def draw_graph(self):
-        print("Drawing graph...")
-        nx.draw_networkx(self._graph)
+    def draw_graph(self, show: bool = True, save_name: str = None):
+        """
+        Draws the molecular graph in kamada kawai layout.
+        :param show: if true, show plot, otherwise don't
+        :param save_name: if not none, save the drawing as savename.png
+        """
+
+        # setup layouts
+        pos = nx.kamada_kawai_layout(self._graph)
+        offset_pos = {k: (v[0] + 0.06, v[1] + 0.02) for k, v in pos.items()}
+
+        # draw graph, with node and edge labels
+        nx.draw(self._graph, pos=pos, with_labels=True, font_color='white')
+        nx.draw_networkx_labels(self._graph, offset_pos, self.formal_charges,
+                                font_color='red', font_size=10)
+        nx.draw_networkx_edge_labels(self._graph, pos, self.bond_orders)
+
+        # optionally show or save molecular graph
+        if show:
+            plt.show()
+            plt.cla()
+        if save_name is not None:
+            plt.savefig(f'test/results/{save_name}.png', format='png')
 
     def get_neighbour_counts(self, element: str):
         """
