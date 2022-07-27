@@ -139,7 +139,6 @@ def pdb_to_Molecule3D(pdb_str: str,
 
     # assign bond orders and charges with ILP
     if assign_bond_orders_and_charges and net_charge is not None:
-        print("Assigning bond orders and charges...")
         molecule.assign_bond_orders_and_charges_with_ILP(net_charge)
 
     return molecule

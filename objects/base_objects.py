@@ -25,9 +25,7 @@ class _2DChemicalObj:
                  name: str = ''
                  ):
 
-
         # iterate for all init methods
-
 
         # init graph
         self._name = name
@@ -36,6 +34,7 @@ class _2DChemicalObj:
             self._graph.add_nodes_from([a.name for a in atoms])
             for a in atoms:
                 self._graph._node[a.name] = a
+
             if bonds:
                 self._graph.add_edges_from([(a1, a2) for a1, a2, _ in bonds])
                 for a1, a2, bond in bonds:
@@ -237,7 +236,7 @@ class _2DChemicalObj:
                 atom_bonds = [bond for bond in self.bonds if atom.get_index() in bond]
                 if atom.element == 'C' and len(atom_bonds) == 2:
                     non_allene_atoms[atom] = atom_bonds
-        print(self.bonds)
+
         # ===== VARIABLES =====
 
         # formal charges of atoms
@@ -263,7 +262,6 @@ class _2DChemicalObj:
             bond: i
             for (i, bond) in enumerate(self.bonds)
         }
-        print("bond mapping: ", bond_mapping)
 
         # Maps an integer to a bond
         bond_reverse_mapping = {v: k for (k, v) in bond_mapping.items()}
@@ -356,28 +354,21 @@ class _2DChemicalObj:
             stderr.write('\n' + 'Failed LP written to "{0}"'.format(debug_file))
             raise
 
-        #self.formal_charges, self.bond_orders, self.non_bonded_electrons = {}, {}, {}
-
         write_to_debug(debug, 'Objective function values: {0}'.format([value(objective) for objective in OBJECTIVES]))
 
         # set solution variables in molecule atoms/bonds
         for v in problem.variables():
             variable_type, variable_substr = v.name.split('_')
             if variable_type == 'C':
-                #atom_index = str(variable_substr)
                 self.get_atom(variable_substr).formal_charge = round(v.varValue)
-                #self.formal_charges[atom_index] = round(v.varValue)
             elif variable_type == 'B':
                 bond_index = int(variable_substr)
                 a1, a2 = bond_reverse_mapping[bond_index]
                 self.get_bond(a1, a2).order = round(v.varValue)
-                #self.bond_orders[] = round(v.varValue)
             elif variable_type == 'Z':
                 pass
             elif variable_type == 'N':
-                #atom_index = str(variable_substr)
                 self.get_atom(variable_substr).non_bonded_electrons = round(v.varValue) * ELECTRON_MULTIPLIER
-                #self.non_bonded_electrons[atom_index] = round(v.varValue) * ELECTRON_MULTIPLIER
                 if allow_radicals and self.get_atom(variable_substr).non_bonded_electrons % 2 == 1:
                     stderr.write('Warning: Radical molecule...')
             else:
@@ -386,7 +377,6 @@ class _2DChemicalObj:
         write_to_debug(debug, 'bond_orders:', self.bond_orders)
         write_to_debug(debug, 'formal_charges', self.formal_charges)
         write_to_debug(debug, 'non_bonded_electrons', self.non_bonded_electrons)
-        #self.assign_aromatic_bonds()
 
     def weave_featurize_molecule(self):
         """

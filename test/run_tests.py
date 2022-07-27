@@ -51,9 +51,18 @@ class TransitionStructureTest(unittest.TestCase):
         # gen transition structure
         trans_mol = gen_tautomer_trans_structure_2D(t1, t2)
 
+        print("\nTransition Molecule:")
+        print("Atoms: ", trans_mol.atoms)
+        print("Formal Charges: ", trans_mol.formal_charges)
+        print("Bonds: ", trans_mol.bonds)
+        print("Bond Orders: ", trans_mol.bond_orders)
 
-
-        self.assertEqual(True, False)
+        self.assertEqual(list(trans_mol.atoms), ['C1', 'O1', 'N1', 'H1', 'H2', 'H3', 'H4'])
+        self.assertEqual(trans_mol.formal_charges, {'C1': 0, 'O1': 0, 'N1': 0, 'H1': 0, 'H2': 0, 'H3': 0, 'H4': 0})
+        self.assertEqual(list(trans_mol.bonds), [('C1', 'N1'), ('C1', 'O1'), ('C1', 'H1'), ('O1', 'H2'), ('N1', 'H3'), ('N1', 'H4')])
+        self.assertEqual(trans_mol.bond_orders, {frozenset({'N1', 'C1'}): 1, frozenset({'O1', 'C1'}): -1,
+                                                 frozenset({'H1', 'C1'}): 0, frozenset({'O1', 'H2'}): 1,
+                                                 frozenset({'N1', 'H3'}): 0, frozenset({'N1', 'H4'}): -1})
 
 
 class ParserTest(unittest.TestCase):

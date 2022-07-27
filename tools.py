@@ -34,7 +34,6 @@ def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
     G2 = mol_end.get_backbone_graph()
     GM = isomorphism.GraphMatcher(G1, G2, node_match=atoms_equal)
     assert GM.is_isomorphic(), "Backbone structures of two molecules not the same."
-    print("Is Isomorphic: ", GM.is_isomorphic())
     backbone_mapping = GM.mapping
     reverse_mapping = dict((v, k) for k, v in backbone_mapping.items())
     print("Mapping: ", backbone_mapping)
@@ -67,32 +66,25 @@ def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
     delta_bond_orders = {bond_id: t2_bond_orders[bond_id] - t1_bond_orders[bond_id]
                          for bond_id in t1_bond_orders.keys()}
 
-    print("t1_formal_charges: ", t1_formal_charges)
-    print("t2_formal_charges: ", t2_formal_charges)
-    print("t2 unmapped charges: ", mol_end.get_formal_charges(t2_heavy_atoms))
-    print("Delta formal charges: ", delta_formal_charges)
+    # print("t1_formal_charges: ", t1_formal_charges)
+    # print("t2_formal_charges: ", t2_formal_charges)
+    # print("t2 unmapped charges: ", mol_end.get_formal_charges(t2_heavy_atoms))
+    # print("Delta formal charges: ", delta_formal_charges)
     assert t1_formal_charges.keys() == t2_formal_charges.keys()
 
-    print("t1_bond_orders: ", t1_bond_orders)
-    print("t2_bond_orders: ", t2_bond_orders)
-    print("t2 unmapped bond orders: ", mol_end.get_bond_orders(t2_heavy_atom_bonds))
-    print("Delta bond_orders: ", delta_bond_orders)
-
-    print(t1_bond_orders.keys())
-    print(t2_bond_orders.keys())
+    # print("t1_bond_orders: ", t1_bond_orders)
+    # print("t2_bond_orders: ", t2_bond_orders)
+    # print("t2 unmapped bond orders: ", mol_end.get_bond_orders(t2_heavy_atom_bonds))
+    # print("Delta bond_orders: ", delta_bond_orders)
     assert t1_bond_orders.keys() == t2_bond_orders.keys()
 
-    print("t1_h_counts: ", t1_h_counts)
-    print("t2_h_counts: ", t2_h_counts)
-    print("Delta h counts: ", delta_h_counts)
+    # print("t1_h_counts: ", t1_h_counts)
+    # print("t2_h_counts: ", t2_h_counts)
+    # print("Delta h counts: ", delta_h_counts)
 
-    # 4.
     # create new graph with atom/edge labels from G1, with attributes as the deltas determined above
     # based on number of hydrogens difference at each heavy atom, add newly indexed hydrogens to
     # heavy atoms, with edge labels as -1 if removed, 0 if the same and +1 if added
-
-    # 5. DONE! Return graph! (or new molecule object with this graph..?)
-    # after this you need to weave featurise this graph... lol
 
     # get heavy atoms for trans mol
     trans_atoms = [
@@ -125,10 +117,39 @@ def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
         trans_bonds.append((a1_ind, a2_ind, trans_bond))
 
     # add bonds to hydrogens with delta bond orders
-    h_id = 0
+    h_id = 1
     for atom_id in t1_heavy_atoms:
-        pass
-        # TODO: need a nice way to add hydrogens back onto mol with delta bond orders
+
+        # add all static and transition hydrogens
+        num_trans_h = max([t1_h_counts[atom_id], t2_h_counts[atom_id]])
+        for i in range(0, num_trans_h):
+
+            h_name = f"H{h_id}"
+
+            # add hydrogen
+            trans_atoms.append(
+                Atom2D(
+                    index={'name': h_name},
+                    name=h_name,
+                    element='H',
+                    formal_charge=0,
+                )
+            )
+
+            if i < num_trans_h - abs(delta_h_counts[atom_id]):
+                # add static hydrogen bonds
+                trans_h_bond = Bond2D(order=0)
+            else:
+                # add transition hydrogen bond
+                if delta_h_counts[atom_id] < 0:
+                    # lost hydrogen, assign negative bond order
+                    trans_h_bond = Bond2D(order=-1)
+                else:
+                    # added hydrogen, assign positive bond order
+                    trans_h_bond = Bond2D(order=1)
+
+            trans_bonds.append((atom_id, h_name, trans_h_bond))
+            h_id += 1
 
     trans_mol = Molecule2D(
         trans_atoms,
