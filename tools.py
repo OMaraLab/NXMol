@@ -87,27 +87,33 @@ def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
     # heavy atoms, with edge labels as -1 if removed, 0 if the same and +1 if added
 
     # get heavy atoms for trans mol
-    trans_atoms = [
-        Atom2D(
-            index={'name': atom_id},
-            name=atom_id,
-            element=mol_start.get_atom(atom_id).element,
-            formal_charge=delta_formal_charges[atom_id],
-            #non_bonded_electrons=t2_non[atom_id] - t1_formal_charges[atom_id],
+    # TODO: modify this to return rdkit compatible atoms and bonds and mol (maybe lol)
+    # TODO: incorporate aromatic + conjugation information
+    n_id = 0
+    trans_atoms = []
+    for atom_id in t1_heavy_atoms:
+        trans_atoms.append(
+            Atom2D(
+                index={'name': atom_id, 'nid': n_id},
+                name=atom_id,
+                element=mol_start.get_atom(atom_id).element,
+                formal_charge=delta_formal_charges[atom_id],
+                #non_bonded_electrons=t2_non[atom_id] - t1_formal_charges[atom_id],
+            )
         )
-        for atom_id in t1_heavy_atoms
-    ]
+        n_id += 1
 
     # add hydrogens with new ids
-    trans_atoms.extend([
-        Atom2D(
-            index={'name': f"H{i}"},
-            name=f"H{i}",
-            element='H',
-            formal_charge=0,
-        )
-        for i in range(1, mol_start.get_element_count('H') + 1)
-    ])
+    # for i in range(1, mol_start.get_element_count('H') + 1):
+    #     trans_atoms.append(
+    #         Atom2D(
+    #             index={'name': f"H{i}", 'nid': n_id},
+    #             name=f"H{i}",
+    #             element='H',
+    #             formal_charge=0,
+    #         )
+    #     )
+    #     n_id += 1
 
     # add heavy atom bonds with delta bond orders
     trans_bonds = []
@@ -129,12 +135,13 @@ def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
             # add hydrogen
             trans_atoms.append(
                 Atom2D(
-                    index={'name': h_name},
+                    index={'name': h_name, 'nid': n_id},
                     name=h_name,
                     element='H',
                     formal_charge=0,
                 )
             )
+            n_id += 1
 
             if i < num_trans_h - abs(delta_h_counts[atom_id]):
                 # add static hydrogen bonds

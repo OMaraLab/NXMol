@@ -1,6 +1,6 @@
 import networkx as nx
 from chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
-from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D
+from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, RDKitAtom, RDKitBond
 from typing import List, Union
 
 
@@ -32,6 +32,7 @@ class Molecule2D(_2DChemicalObj):
 
 
 class Molecule3D(_3DChemicalObj, Molecule2D):
+
     def __init__(self, atoms: List[Atom2D] = [],
                  bonds: List[Union[str, str, Bond2D]] = [],
                  name: str = ''
@@ -43,6 +44,29 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
     def writePDB(self):
         return
+
+
+class RDKitMolecule(_3DChemicalObj):
+
+    def __init__(self,
+                 atoms: List[RDKitAtom] = None,
+                 bonds: List[RDKitBond] = None,
+                 name: str = ''
+                 ):
+        super().__init__(atoms, bonds, name)
+
+    def __repr__(self):
+        return 'RDKitMol'
+
+    def GetNumAtoms(self):
+        return
+
+    def GetAtoms(self):
+        return
+
+    def GetBonds(self):
+        return
+
 
 if __name__ == "__main__":
 
@@ -70,5 +94,4 @@ if __name__ == "__main__":
     print(nx.dijkstra_path(molecule.graph, 'a', 'd'))
 
     test = Molecule2D([Atom2D('C1', 'C')])
-
 

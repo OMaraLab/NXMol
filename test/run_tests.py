@@ -106,5 +106,18 @@ class NetworkxTests(unittest.TestCase):
         plt.show()
         plt.cla()
 
+
+class ChemObjectTests(unittest.TestCase):
+
+    def test_rings(self):
+
+        with open("data/pdb/nicorandil_t1.pdb", "r") as t1_file:
+            mol = pdb_to_Molecule3D(t1_file.read(), net_charge=0, assign_bond_orders_and_charges=True)
+
+        print("Rings: ", mol.get_rings())
+
+        self.assertEqual(mol.get_rings(), [('C8', 'N3', 'C7', 'C6', 'C5', 'C4')])
+
+
 if __name__ == '__main__':
     unittest.main()

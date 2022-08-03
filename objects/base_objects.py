@@ -21,8 +21,8 @@ class _2DChemicalObj:
     te . This can be parsed to numerous common string formats.
     """
     def __init__(self,
-                 atoms: List[Atom2D] = [],
-                 bonds: List[Union[str, str, Bond2D]] = [],
+                 atoms: List[_Atom] = [],
+                 bonds: List[Union[str, str, _Bond]] = [],
                  name: str = ''
                  ):
 
@@ -46,11 +46,24 @@ class _2DChemicalObj:
 
     @property
     def atoms(self):
+        # TODO: we should modify this to be atom_ids, just need to refactor
         return self.graph.nodes
+
+    @property
+    def atom_objects(self):
+        return self.graph.nodes.values()
+
+    @property
+    def num_atoms(self):
+        return len(self.graph.nodes)
 
     @property
     def bonds(self):
         return self.graph.edges
+
+    @property
+    def bond_objects(self):
+        return self.graph.edges.values()
 
     @property
     def graph(self):
@@ -151,6 +164,13 @@ class _2DChemicalObj:
             return self.graph[a1_id][a2_id]
         # TODO: add other index types?
 
+    def get_rings(self):
+        """
+        Get atoms in rings
+        :return:
+        """
+        return list(map(tuple, nx.cycle_basis(self._graph)))
+
     def get_backbone_graph(self):
         """
         Returns a copy of a subgraph view of the molecular graph
@@ -186,6 +206,13 @@ class _2DChemicalObj:
             plt.cla()
         if save_name is not None:
             plt.savefig(f'test/results/{save_name}.png', format='png')
+
+    def get_graph_adjacency_matrix(self):
+        """
+        Return adjacency matrix representation of molecular graph.
+        :return:
+        """
+        return nx.adjacency_matrix(self._graph)
 
     def get_neighbour_counts(self, element: str):
         """

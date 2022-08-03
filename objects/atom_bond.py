@@ -41,6 +41,11 @@ class _Atom:
         self.valence = None
         self.formal_charge = None
         self.non_bonded_electrons = None
+        self.hybridisation = None
+        self.is_aromatic = None
+        self.is_conjugated = None
+        self.radical_electrons = 0
+        self.stereo = None
 
         if 'valence' in kwargs:
             self.valence = kwargs['valence']
@@ -48,6 +53,12 @@ class _Atom:
             self.formal_charge = kwargs['formal_charge']
         elif 'non_bonded_electrons' in kwargs:
             self.non_bonded_electrons = kwargs['non_bonded_electrons']
+        elif 'hybridisation' in kwargs:
+            self.hybridisation = kwargs['hybridisation']
+        elif 'is_aromatic' in kwargs:
+            self.is_aromatic = kwargs['is_aromatic']
+        elif 'is_conjugated' in kwargs:
+            self.is_conjugated = kwargs['is_conjugated']
 
     def get_index(self, id_type: str = 'name'):
         """
@@ -55,10 +66,10 @@ class _Atom:
         :param id_type:
         :return:
         """
-        if id_type in self._index:
+        if id_type in set(self._index.keys()):
             return self._index[id_type]
         else:
-            raise AtomIndexError(f'Id type{id_type} not associated with this atom')
+            raise AtomIndexError(f'Id type {id_type} not associated with this atom')
 
     @property
     def name(self):
@@ -152,11 +163,52 @@ class Atom3D(_Atom):
         super().__init__(name, element, **kwargs)
         self.coordinates = coordinates
 
+class RDKitAtom(_Atom):
+
+    def __init__(self,
+                 name,
+                 element,
+                 degree,
+                 valence,
+                 formal_charge,
+                 hybridisation,
+                 is_aromatic):
+        super().__init__(name, element)
+
+        self.degree = degree
+        self.valence = valence
+        self.formal_charge = formal_charge
+        self.hybridisation = hybridisation
+        self.is_aromatic = is_aromatic
+
+    def GetDegree(self):
+        return self.degree
+
+    def GetImplicitvalence(self):
+        return self.valence
+
+    def GetFormalCharge(self):
+        return self.formal_charge
+
+    def GetNumRadicalElectrons(self):
+        # TODO: Hard coded to zero at this point (we are not allowing radicals)
+        return 0
+
+    def GetHybridisation(self):
+        return self.hybridisation
+
+    def GetProp(self):
+        return
+
+    def HasProp(self):
+        return
+
 
 class _Bond:
 
     def __init__(self, **kwargs):
         self._attributes = {}
+        self._atoms = set()
 
         if 'order' in kwargs:
             self.order = kwargs['order']
@@ -184,10 +236,37 @@ class _Bond:
 
 
 class Bond2D(_Bond):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
 
 class Bond3D(_Bond):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+
+class RDKitBond(_Bond):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def GetBeginAtomIdx(self):
+        return
+
+    def GetEndAtomIdx(self):
+        return
+
+    def GetBondType(self):
+        return
+
+    def GetIsConjugated(self):
+        return
+
+    def isInRing(self):
+        return
+
+    def GetStereo(self):
+        return
+

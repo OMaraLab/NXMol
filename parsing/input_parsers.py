@@ -99,15 +99,19 @@ def pdb_to_Molecule3D(pdb_str: str,
     pdb_atoms = [pdb_atom for pdb_atom in pdb_atoms_in(pdb_str)]
 
     # convert to chem_ds atoms
-    atoms = [
-        Atom3D(
-            index={'numeric': int(pdb_atom.index)},
-            name=pdb_atom.name,
-            element=pdb_atom.element,
-            coordinates=pdb_atom.coordinates
+    atoms = []
+    n_id = 0
+    for pdb_atom in pdb_atoms:
+
+        atoms.append(
+            Atom3D(
+                index={'pdb': int(pdb_atom.index), 'nid': n_id},
+                name=pdb_atom.name,
+                element=pdb_atom.element,
+                coordinates=pdb_atom.coordinates
+            )
         )
-        for pdb_atom in pdb_atoms
-    ]
+        n_id += 1
 
     # get pdb bonds
     pdb_bonds = reduce(
@@ -140,6 +144,9 @@ def pdb_to_Molecule3D(pdb_str: str,
     # assign bond orders and charges with ILP
     if assign_bond_orders_and_charges and net_charge is not None:
         molecule.assign_bond_orders_and_charges_with_ILP(net_charge)
+
+    # if assign aromatic bonds
+    # molecule.assign_aromatic_bonds() # TODO: implement this!!!
 
     return molecule
 
