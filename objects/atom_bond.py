@@ -19,7 +19,7 @@ class _Atom:
     def __init__(self,
                  name: str,
                  element: str,
-                 index: dict = {},
+                 index=None,
                  **kwargs):
         """
         The base class used for atom types. These are used as the second level data structure within the graph objects
@@ -30,6 +30,8 @@ class _Atom:
         :param kwargs:
         """
         # TODO: Possibly rework the atom class to replace the atom dict factory for more consistency
+        if index is None:
+            index = {}
         self.element = element
         # may or may not check element types
 
@@ -153,6 +155,7 @@ class Atom2D(_Atom):
     """
     2D Atom representation, has no additional functionality from base class
     """
+
     def __init__(self, name, element, **kwargs):
         super().__init__(name, element, **kwargs)
 
@@ -162,6 +165,7 @@ class Atom3D(_Atom):
     def __init__(self, name, element, coordinates, **kwargs):
         super().__init__(name, element, **kwargs)
         self.coordinates = coordinates
+
 
 class RDKitAtom(_Atom):
 
@@ -269,4 +273,3 @@ class RDKitBond(_Bond):
 
     def GetStereo(self):
         return
-
