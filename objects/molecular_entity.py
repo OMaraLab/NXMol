@@ -1,6 +1,6 @@
 import networkx as nx
 from chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
-from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, RDKitAtom, RDKitBond
+from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, RDKitAtom, RDKitBond
 from typing import List, Union
 
 
@@ -33,8 +33,8 @@ class Molecule2D(_2DChemicalObj):
 
 class Molecule3D(_3DChemicalObj, Molecule2D):
 
-    def __init__(self, atoms: List[Atom2D] = [],
-                 bonds: List[Union[str, str, Bond2D]] = [],
+    def __init__(self, atoms: List[Atom3D] = [],
+                 bonds: List[Union[str, str, Bond3D]] = [],
                  name: str = ''
                  ):
         super().__init__(atoms, bonds,name)
