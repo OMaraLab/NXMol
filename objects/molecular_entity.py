@@ -62,8 +62,8 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
     def rmsdFit(self):
         return
 
-    def partialChargeFit(self, method='lsq'):
-        if not (self._esp_grid_charge and self._esp_grid_coords):
+    def partialChargeFit(self, method='lsq', total_charge: int = 0):
+        if self._esp_grid_charge is None or self._esp_grid_coords is None:
             raise AttributeError('No esp grid found')
         if method == 'lsq':
             four_pi_eps_rcp = 138.9354  # // kJ * nm * mol * e ^ -2 *taken directly from field fit) (units.h)
@@ -77,11 +77,22 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             distance_pairs = distance_matrix(self._esp_grid_coords, self.atom_coord_matrix)
             # atom coords read in as BOHR, might just convert this to Metres
             A = 1/distance_pairs  # don't need constant in a.u.
-
-            # assmuning units of esp surface are kj*bohr/q
+            A_star = np.zeros((self.num_atoms+1, self.num_atoms+1))  # each atom + one constraint
+            # assuming units of esp surface are kj*bohr/q
             b = self._esp_grid_charge.reshape(-1, 1)  # turn 1d array into n arrays with 1 element each
-            q = inv(A.T @ A) @ A.T @ b
+            b_star = np.zeros((self.num_atoms+1,1))
+            b_star[:-1] = A.T @ b
+            b_star[-1] = total_charge
 
+            A_star[:self.num_atoms,:self.num_atoms] = A.T @ A
+
+            ## setting up total charge constraint
+            C = np.ones(self.num_atoms)
+            A_star[-1,:-1] = C
+            A_star[:-1,-1] = C.T
+
+            # q = inv(A.T @ A) @ A.T @ b
+            q = inv(A_star) @ b_star
             return q
 
 

@@ -239,7 +239,7 @@ def GAMESS_to_Molecule3D(
     optimised_grid = parser.findall(GAMESS_log)[-1]
     with StringIO(optimised_grid) as str_buffer:
         # this seems to be one of the fastest ways to load the esp_grid
-        esp_matrix = np.loadtxt(str_buffer)
+        esp_matrix = np.loadtxt(str_buffer, dtype=np.float64)
     # default for these is BOHR
     esp_grid_coords = esp_matrix.T[[1, 2, 3]].T  # want each row to be xyz
     esp_grid_charges = esp_matrix.T[6]
