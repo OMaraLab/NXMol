@@ -4,6 +4,7 @@ import networkx as nx
 from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable
 
 import pulp
+import numpy as np
 from matplotlib import pyplot as plt
 
 from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS
@@ -51,7 +52,7 @@ class _2DChemicalObj:
 
     @property
     def atom_objects(self):
-        return self.graph.nodes.values()
+        return list(self.graph.nodes.values())
 
     @property
     def num_atoms(self):
@@ -63,7 +64,7 @@ class _2DChemicalObj:
 
     @property
     def bond_objects(self):
-        return self.graph.edges.values()
+        return list(self.graph.edges.values())
 
     @property
     def graph(self):
@@ -448,3 +449,9 @@ class _3DChemicalObj(_2DChemicalObj):
     def add_bond(self, bond: Bond3D):
         if not isinstance(bond, Bond3D):
             raise TypeError('bond must be of type Bond')
+
+    @property
+    def atom_coord_matrix(self):
+        return np.array(
+            [atom.coordinates for atom in self.atom_objects]
+        )
