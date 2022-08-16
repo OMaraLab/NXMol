@@ -5,8 +5,9 @@ import numpy as np
 from numpy.linalg import inv
 from scipy.spatial import distance_matrix
 import pulp
+
 try:
-    import gurobipy as gb
+    import gurobipy as gp
     from gurobipy import GRB
 except ModuleNotFoundError:
     pass
@@ -74,7 +75,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                          method='raw',
                          total_charge: int = 0,
                          round_places: int = 3,
-                         timeout: int = 60*5,
+                         timeout: int = 60 * 5,
                          minmax: bool = False,
                          verbose: bool = False):
         if self._esp_grid_charge is None or self._esp_grid_coords is None:
@@ -109,162 +110,107 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
             # q = inv(A.T @ A) @ A.T @ b
             q = inv(A_star) @ b_star
-            return q
 
-        elif solver == 'pulp':
+            if method != 'round':
+                return q
+            else:
+                roundProblem = pulp.LpProblem('RoundingProblem', pulp.LpMinimize)
+                atom_names = [a for a in self.atoms]
 
-            roundProblem = pulp.LpProblem('RoundingProblem', pulp.LpMinimize)
-            atom_names = [a for a in self.atoms]
-
-            if method == 'round':
-                atoms_vars = pulp.LpVariable.dicts('', atom_names, lowBound=-(10 ** round_places - 1),
+                atoms_vars = pulp.LpVariable.dicts('', range(len(atom_names)), lowBound=-(10 ** round_places - 1),
                                                    upBound=(10 ** round_places - 1), cat='Integer')
-                # effectively sets upper and lower bounds of 1
-                atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)/float(10**round_places)
-
-            else:
-                atoms_vars = pulp.LpVariable.dicts('', atom_names, lowBound=-1.0,
-                                                   upBound=1.0)
-                atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)
-
-            residuals_abs = pulp.LpVariable.dicts('resid', range(A.shape[0]), lowBound=0)
-
-            # abs_vars = pulp.LpVariable.dicts('abs', atom_names, lowBound=0)
-            if minmax:
-                max_residual = pulp.LpVariable('max_resid', lowBound=0)
-
-            # set up variables to represent the absolute value of the difference
-            # need to determine if there is a way to simply directly input this information
-            # can put lp variables in numpy array and go from there
-
-            residuals = A @ atoms_vars_array - b
-            for i, r in enumerate(residuals):
-                roundProblem += r[0] <= residuals_abs[i]
-                roundProblem += -r[0] <= residuals_abs[i]
+                abs_vars = pulp.LpVariable.dicts('abs', range(len(atom_names)), lowBound=0)
                 if minmax:
-                    # for Objective, minimise the maximum deviation
-                    roundProblem += max_residual >=residuals_abs[i]
+                    max_residual = pulp.LpVariable('max_charge', lowBound=0)
 
-            roundProblem += sum(atoms_vars.values()) == total_charge
+                # set up variables to represent the absulte value of the difference
+                for a in range(self.num_atoms):
+                    # absolute values for the objective function
+                    # atoms_vars[a['unique']].setInitialValue(int(a['fit_result']['charge'][0]*10**round_places))
+                    roundProblem += abs_vars[a] >= (
+                            atoms_vars[a] - q[a][0] * 10 ** round_places)
+                    roundProblem += abs_vars[a] >= -(
+                            atoms_vars[a] - q[a][0] * 10 ** round_places)
+                    # all atoms in group have same charge
+                    # need the length, i.e. if there are 3 atoms in the group the residual total is actually 3 times that
+                    # constrain the maximum value (although this hopefully shouldn't matter
+                    # roundProblem += atoms_vars[a['unique']] <= (10**round_places - 1) # e.g. want to round to 4 decimal places gives max value of 9999
+                    if minmax:
+                        # for Objective, minimise the maximum deviation
+                        roundProblem += max_residual >= abs_vars[a]
 
-            lsq_sol = self.partialChargeFit()
-            for i, a in enumerate(atoms_vars.values()):
-                # absolute values for the objective function
-                a.setInitialValue(lsq_sol[i][0])
+                roundProblem += sum(atoms_vars.values()) == total_charge
 
+                if minmax:
+                    # minimise the maxiumum residual
+                    roundProblem += max_residual
+                else:
+                    # minimise sum of the residuals
+                    roundProblem += sum(abs_vars.values())
 
-            # absolute values for the objective function
-            # atoms_vars[a['unique']].setInitialValue(int(a['fit_result']['charge'][0]*10**round_places))
-            # creating the residuals for each surface point for each atom
-
-            # all atoms in group have same charge
-            # need the length, i.e. if there are 3 atoms in the group the residual total is actually 3 times that
-            # constrain the maximum value (although this hopefully shouldn't matter
-            # roundProblem += atoms_vars[a['unique']] <= (10**round_places - 1) # e.g. want to round to 4 decimal places gives max value of 9999
-
-            # symettry
-
-            if minmax:
-                # minimise the maxiumum residual
-                roundProblem += max_residual
-            else:
-                # minimise sum of the residuals
-                roundProblem += sum(residuals_abs.values())
-
-                # Q = A.T @ A
-                # c = -2 * b.T @ A
-                #
-                # obj = atoms_vars_array.T @ Q @ atoms_vars_array + c @ atoms_vars_array + b.T @ b
-                #
-                # roundProblem += obj.sum()
-
-
-            # print(roundProblem)
-            if timeout:
-                status = roundProblem.solve(solver=pulp.apis.PULP_CBC_CMD(
-                    fracGap=10e-10,
-                    maxSeconds=timeout,
-                    threads=4,
-                    timeMode="cpu"))
-            else:
-                status = roundProblem.solve(
-                    solver=pulp.apis.PULP_CBC_CMD(threads=4,
-                                                  timeMode="cpu")
-                )  # Solver
-            print(pulp.LpStatus[status])
-            return np.array([pulp.value(x) for x in atoms_vars.values()]).reshape(-1,1)
+                # print(roundProblem)
+                if timeout:
+                    status = roundProblem.solve(solver=pulp.apis.PULP_CBC_CMD(
+                        timeLimit=timeout,
+                        threads=4,
+                        timeMode="cpu",
+                        msg=verbose))
+                else:
+                    status = roundProblem.solve(
+                        solver=pulp.apis.PULP_CBC_CMD(threads=4,
+                                                      timeMode="cpu",
+                                                      msg=verbose)
+                    )  # Solver
+                return np.array([pulp.value(x) for x in atoms_vars.values()]).reshape(-1, 1) / float(10 ** round_places)
 
         elif solver == 'gurobi':
             if 'gurobipy' not in sys.modules:
                 raise ModuleNotFoundError('gurobipy not imported')
+            if minmax:
+                raise NotImplementedError('MinMax for gurobi solver NYI')
 
-            with gb.Env() as env, gb.Model(env=env) as model:
-                if not verbose:
-                    env.setParam('OutputFlag', 0)
+            env = gp.Env(empty=True)
+            env.setParam("OutputFlag", verbose)
+            env.start()
+            model = gp.Model(env=env)
+            if not verbose:
+                env.setParam('OutputFlag', 0)
 
-                # model = gb.Model('RoundingProblem')
-                atom_names = [a for a in self.atoms]
+            # model = gp.Model('RoundingProblem')
+            atom_names = [a for a in self.atoms]
 
-                if method=='round':
-                    atoms_vars = model.addVars(range(len(atom_names)), vtype=GRB.INTEGER, name=atom_names,
-                                               lb=-(10 ** round_places - 1),
-                                               ub=(10 ** round_places - 1))
-                    atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)/float(10**round_places)
+            if method == 'round':
+                atoms_vars = model.addVars(range(len(atom_names)), vtype=GRB.INTEGER, name=atom_names,
+                                           lb=-(10 ** round_places - 1),
+                                           ub=(
+                                                       10 ** round_places - 1))  # effectively sets upper and lower bounds of the charges as 1,-1
+                atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1) / float(10 ** round_places)
 
-                else:
+            else:
 
-                    atoms_vars = model.addVars(range(len(atom_names)), vtype=GRB.CONTINUOUS, name=atom_names, lb=-1.0, ub=1.0)
+                atoms_vars = model.addVars(range(len(atom_names)), vtype=GRB.CONTINUOUS, name=atom_names, lb=-1.0,
+                                           ub=1.0)
 
-                    atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)
-                residuals_abs = model.addVars(range(A.shape[0]), lb=0)
+                atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)
 
-                # abs_vars = pulp.LpVariable.dicts('abs', atom_names, lowBound=0)
-                if minmax:
-                    pass
-                max_residual = model.addVar(lb=0)
+            tot_charge_const = model.addConstr(gp.quicksum(atoms_vars.values()) == total_charge)
+            # symmetry
 
-                # set up variables to represent the absolute value of the difference
-                # need to determine if there is a way to simply directly input this information
-                # can put lp variables in numpy array and go from there
+            Q = A.T @ A
+            c = -2 * b.T @ A
 
-                residuals = A @ atoms_vars_array - b
+            obj = atoms_vars_array.T @ Q @ atoms_vars_array + c @ atoms_vars_array + b.T @ b
 
+            # gurobi can solve quadratic expressions
+            model.setObjective(obj.sum())
+            # this gives exact same result as lsq
 
-
-                for i, r in enumerate(residuals):
-                    model.addConstr(r[0] <= residuals_abs[i])
-                model.addConstr(-r[0] <= residuals_abs[i])
-
-                if minmax:
-                    # for Objective, minimise the maximum deviation
-                    model.addConstr(max_residual >=residuals_abs[i])
-
-                tot_charge_const = model.addConstr(gb.quicksum(atoms_vars.values()) == total_charge)
-                # symettry
-
-                if minmax:
-                    # minimise the maxiumum residual
-                    model.setObjective(max_residual)
-                else:
-                    # minimise sum of the residuals
-                    #     model.setObjective(gb.quicksum(residuals_abs.values()))
-                    Q = A.T @ A
-                    c = -2 * b.T @ A
-
-                    obj = atoms_vars_array.T @ Q @ atoms_vars_array + c @ atoms_vars_array + b.T @ b
-
-                    # gurobi can solve quadratic expressions
-                    model.setObjective(obj.sum())
-                    # this gives exact same result as lsq
-
-                # print(roundProblem)
-                model.optimize()
-                if method=='round':
-                    return np.vectorize(lambda var: var.getValue())(atoms_vars_array)
-                else:
-                    return np.vectorize(lambda var: var.x)(atoms_vars_array)
-
-
+            # print(roundProblem)
+            model.optimize()
+            if method == 'round':
+                return np.vectorize(lambda var: var.getValue())(atoms_vars_array)
+            else:
+                return np.vectorize(lambda var: var.x)(atoms_vars_array)
 
     def writePDB(self):
         return
