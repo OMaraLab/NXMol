@@ -177,6 +177,8 @@ def GAMESS_to_Molecule3D(
     """
     # todo gamess log has valence information
     # todo it willl be worth investing in the most efficient way to parse the esp field into numerical data
+    # this parser takes ~0.2 seconds might add option to not parse the qm logs
+    # mmap may be a solution but there is debate
 
     if units == 'Bohr':
         coord_unit_conversion = BOHR_PER_ANG
@@ -213,7 +215,8 @@ def GAMESS_to_Molecule3D(
     VALENCE_BLOCK_HEADING = r" {23}TOTAL       BONDED        FREE\n {6}ATOM {12}VALENCE     VALENCE     VALENCE"
 
     # NEXT_BLOCK_HEADING = r"\n          ---------------------\n          ELECTROSTATIC MOMENTS\n          ---------------------"
-    NEXT_BLOCK_HEADING = r" {10}-{21}\n {10}ELECTROSTATIC MOMENTS\n {10}-{21}"
+    # NEXT_BLOCK_HEADING = r" {10}-{21}\n {10}ELECTROSTATIC MOMENTS\n {10}-{21}"
+    # ALT_comment = r"    \*\*\*\* A SOLVENT MODEL IS IN USE IN THIS RUN \*\*\*\*"
 
     compile_str = f"(?<={BOND_BLOCK_HEADING})[\\s\\S]+?(?={VALENCE_BLOCK_HEADING})"
     parser = re.compile(compile_str)
@@ -221,10 +224,11 @@ def GAMESS_to_Molecule3D(
     if not bond_result:
         raise BlockException("Equilibrium Bond Block not found")
 
-    compile_str = f"(?<={VALENCE_BLOCK_HEADING})[\\s\\S]+?(?={NEXT_BLOCK_HEADING})"
+    # compile_str = f"(?<={VALENCE_BLOCK_HEADING})[\\s\\S]+?(?={NEXT_BLOCK_HEADING}|{ALT_comment})"
+    compile_str = f"(?<={VALENCE_BLOCK_HEADING})[\\s\\S]+?(?=\n\n)"
     parser = re.compile(compile_str)
     valence_result = parser.findall(GAMESS_log)
-    if not bond_result:
+    if not valence_result:
         raise BlockException("Valency Bond Block not found")
     valencies = {}
     for line in valence_result[0].strip('\n').split('\n'):
@@ -261,16 +265,21 @@ def GAMESS_to_Molecule3D(
     bonds = []
     for line in bond_result[0].strip('\n').split('\n'):
         # up to 3 groups per line
-        groups = line.split('        ')
+        elements = line.split()
+        num_groups = len(elements)//4
+        groups = []
+        for i in range(num_groups):
+            groups.append([elements[jj+i*4] for jj in range(4)])
+
         for g in groups:
-            id1, id2, distance, bond_order = g.split()
+            id1, id2, distance, bond_order = g
             atom1_name = atoms[int(id1)].name
             atom2_name = atoms[int(id2)].name
 
             bonds.append((
                 atom1_name,
                 atom2_name,
-                Bond3D(order=bond_order)
+                Bond3D(order=float(bond_order))
             )
             )
 
@@ -292,3 +301,8 @@ if __name__ == '__main__':
 
     with open('../test/data/qm/451_b3lyp_631Gd.out', 'r') as f:
         test2 = GAMESS_to_Molecule3D(f.read(), units='Bohr')
+        print(test2.partialChargeFit())
+        print(test2.partialChargeFit(solver = 'pulp'))
+        print(test2.partialChargeFit(solver = 'gurobi', method='round'))
+        # print(test2.partialChargeFit(method='ILP', minmax=True))
+

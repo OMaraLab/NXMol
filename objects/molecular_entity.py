@@ -1,7 +1,15 @@
+import sys
+
 import networkx as nx
 import numpy as np
 from numpy.linalg import inv
 from scipy.spatial import distance_matrix
+import pulp
+try:
+    import gurobipy as gb
+    from gurobipy import GRB
+except ModuleNotFoundError:
+    pass
 
 from chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
 from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, RDKitAtom, RDKitBond
@@ -25,7 +33,7 @@ class Molecule2D(_2DChemicalObj):
             bonds = []
 
         # init super class
-        super().__init__(atoms, bonds,  name)
+        super().__init__(atoms, bonds, name)
         self.attributes = {}
         self.angles = {}
         self.dihedrals = {}
@@ -62,40 +70,199 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
     def rmsdFit(self):
         return
 
-    def partialChargeFit(self, method='lsq', total_charge: int = 0):
+    def partialChargeFit(self, solver='lsq',
+                         method='raw',
+                         total_charge: int = 0,
+                         round_places: int = 3,
+                         timeout: int = 60*5,
+                         minmax: bool = False,
+                         verbose: bool = False):
         if self._esp_grid_charge is None or self._esp_grid_coords is None:
             raise AttributeError('No esp grid found')
-        if method == 'lsq':
-            four_pi_eps_rcp = 138.9354  # // kJ * nm * mol * e ^ -2 *taken directly from field fit) (units.h)
-            NM_per_BOHR = 0.0529177
-            # default load units are bohrs
 
-            # currently unkown units of the surface
-            # want rows to correspond to every atom for each grid point
+        # these setups are used for both solving methods
 
-            # assumes a.u.
-            distance_pairs = distance_matrix(self._esp_grid_coords, self.atom_coord_matrix)
-            # atom coords read in as BOHR, might just convert this to Metres
-            A = 1/distance_pairs  # don't need constant in a.u.
-            A_star = np.zeros((self.num_atoms+1, self.num_atoms+1))  # each atom + one constraint
+        # default load units are bohrs
+
+        # currently unkown units of the surface
+        # want rows to correspond to every atom for each grid point
+
+        # assumes a.u.
+        distance_pairs = distance_matrix(self._esp_grid_coords, self.atom_coord_matrix)
+        # atom coords read in as BOHR, might just convert this to Metres
+        A = 1 / distance_pairs  # don't need constant in a.u.
+        b = self._esp_grid_charge.reshape(-1, 1)  # turn 1d array into n arrays with 1 element each
+
+        if solver == 'lsq':
+            A_star = np.zeros((self.num_atoms + 1, self.num_atoms + 1))  # each atom + one constraint
             # assuming units of esp surface are kj*bohr/q
-            b = self._esp_grid_charge.reshape(-1, 1)  # turn 1d array into n arrays with 1 element each
-            b_star = np.zeros((self.num_atoms+1,1))
+            b_star = np.zeros((self.num_atoms + 1, 1))
             b_star[:-1] = A.T @ b
             b_star[-1] = total_charge
 
-            A_star[:self.num_atoms,:self.num_atoms] = A.T @ A
+            A_star[:self.num_atoms, :self.num_atoms] = A.T @ A
 
             ## setting up total charge constraint
             C = np.ones(self.num_atoms)
-            A_star[-1,:-1] = C
-            A_star[:-1,-1] = C.T
+            A_star[-1, :-1] = C
+            A_star[:-1, -1] = C.T
 
             # q = inv(A.T @ A) @ A.T @ b
             q = inv(A_star) @ b_star
             return q
 
+        elif solver == 'pulp':
 
+            roundProblem = pulp.LpProblem('RoundingProblem', pulp.LpMinimize)
+            atom_names = [a for a in self.atoms]
+
+            if method == 'round':
+                atoms_vars = pulp.LpVariable.dicts('', atom_names, lowBound=-(10 ** round_places - 1),
+                                                   upBound=(10 ** round_places - 1), cat='Integer')
+                # effectively sets upper and lower bounds of 1
+                atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)/float(10**round_places)
+
+            else:
+                atoms_vars = pulp.LpVariable.dicts('', atom_names, lowBound=-1.0,
+                                                   upBound=1.0)
+                atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)
+
+            residuals_abs = pulp.LpVariable.dicts('resid', range(A.shape[0]), lowBound=0)
+
+            # abs_vars = pulp.LpVariable.dicts('abs', atom_names, lowBound=0)
+            if minmax:
+                max_residual = pulp.LpVariable('max_resid', lowBound=0)
+
+            # set up variables to represent the absolute value of the difference
+            # need to determine if there is a way to simply directly input this information
+            # can put lp variables in numpy array and go from there
+
+            residuals = A @ atoms_vars_array - b
+            for i, r in enumerate(residuals):
+                roundProblem += r[0] <= residuals_abs[i]
+                roundProblem += -r[0] <= residuals_abs[i]
+                if minmax:
+                    # for Objective, minimise the maximum deviation
+                    roundProblem += max_residual >=residuals_abs[i]
+
+            roundProblem += sum(atoms_vars.values()) == total_charge
+
+            lsq_sol = self.partialChargeFit()
+            for i, a in enumerate(atoms_vars.values()):
+                # absolute values for the objective function
+                a.setInitialValue(lsq_sol[i][0])
+
+
+            # absolute values for the objective function
+            # atoms_vars[a['unique']].setInitialValue(int(a['fit_result']['charge'][0]*10**round_places))
+            # creating the residuals for each surface point for each atom
+
+            # all atoms in group have same charge
+            # need the length, i.e. if there are 3 atoms in the group the residual total is actually 3 times that
+            # constrain the maximum value (although this hopefully shouldn't matter
+            # roundProblem += atoms_vars[a['unique']] <= (10**round_places - 1) # e.g. want to round to 4 decimal places gives max value of 9999
+
+            # symettry
+
+            if minmax:
+                # minimise the maxiumum residual
+                roundProblem += max_residual
+            else:
+                # minimise sum of the residuals
+                roundProblem += sum(residuals_abs.values())
+
+                # Q = A.T @ A
+                # c = -2 * b.T @ A
+                #
+                # obj = atoms_vars_array.T @ Q @ atoms_vars_array + c @ atoms_vars_array + b.T @ b
+                #
+                # roundProblem += obj.sum()
+
+
+            # print(roundProblem)
+            if timeout:
+                status = roundProblem.solve(solver=pulp.apis.PULP_CBC_CMD(
+                    fracGap=10e-10,
+                    maxSeconds=timeout,
+                    threads=4,
+                    timeMode="cpu"))
+            else:
+                status = roundProblem.solve(
+                    solver=pulp.apis.PULP_CBC_CMD(threads=4,
+                                                  timeMode="cpu")
+                )  # Solver
+            print(pulp.LpStatus[status])
+            return np.array([pulp.value(x) for x in atoms_vars.values()]).reshape(-1,1)
+
+        elif solver == 'gurobi':
+            if 'gurobipy' not in sys.modules:
+                raise ModuleNotFoundError('gurobipy not imported')
+
+            with gb.Env() as env, gb.Model(env=env) as model:
+                if not verbose:
+                    env.setParam('OutputFlag', 0)
+
+                # model = gb.Model('RoundingProblem')
+                atom_names = [a for a in self.atoms]
+
+                if method=='round':
+                    atoms_vars = model.addVars(range(len(atom_names)), vtype=GRB.INTEGER, name=atom_names,
+                                               lb=-(10 ** round_places - 1),
+                                               ub=(10 ** round_places - 1))
+                    atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)/float(10**round_places)
+
+                else:
+
+                    atoms_vars = model.addVars(range(len(atom_names)), vtype=GRB.CONTINUOUS, name=atom_names, lb=-1.0, ub=1.0)
+
+                    atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)
+                residuals_abs = model.addVars(range(A.shape[0]), lb=0)
+
+                # abs_vars = pulp.LpVariable.dicts('abs', atom_names, lowBound=0)
+                if minmax:
+                    pass
+                max_residual = model.addVar(lb=0)
+
+                # set up variables to represent the absolute value of the difference
+                # need to determine if there is a way to simply directly input this information
+                # can put lp variables in numpy array and go from there
+
+                residuals = A @ atoms_vars_array - b
+
+
+
+                for i, r in enumerate(residuals):
+                    model.addConstr(r[0] <= residuals_abs[i])
+                model.addConstr(-r[0] <= residuals_abs[i])
+
+                if minmax:
+                    # for Objective, minimise the maximum deviation
+                    model.addConstr(max_residual >=residuals_abs[i])
+
+                tot_charge_const = model.addConstr(gb.quicksum(atoms_vars.values()) == total_charge)
+                # symettry
+
+                if minmax:
+                    # minimise the maxiumum residual
+                    model.setObjective(max_residual)
+                else:
+                    # minimise sum of the residuals
+                    #     model.setObjective(gb.quicksum(residuals_abs.values()))
+                    Q = A.T @ A
+                    c = -2 * b.T @ A
+
+                    obj = atoms_vars_array.T @ Q @ atoms_vars_array + c @ atoms_vars_array + b.T @ b
+
+                    # gurobi can solve quadratic expressions
+                    model.setObjective(obj.sum())
+                    # this gives exact same result as lsq
+
+                # print(roundProblem)
+                model.optimize()
+                if method=='round':
+                    return np.vectorize(lambda var: var.getValue())(atoms_vars_array)
+                else:
+                    return np.vectorize(lambda var: var.x)(atoms_vars_array)
 
 
 
@@ -126,11 +293,10 @@ class RDKitMolecule(_3DChemicalObj):
 
 
 if __name__ == "__main__":
-
     # testing
 
     molecule = Molecule3D()
-    #molecule.add_edge()
+    # molecule.add_edge()
     molecule.graph.add_node(1)
     molecule.graph.add_node(2)
     molecule.graph.add_edge(2, 1)
@@ -151,4 +317,3 @@ if __name__ == "__main__":
     print(nx.dijkstra_path(molecule.graph, 'a', 'd'))
 
     test = Molecule2D([Atom2D('C1', 'C')])
-
