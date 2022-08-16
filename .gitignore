@@ -1,3 +1,4 @@
 *.idea/
 *__pycache__/
 helpers/__pycache__/
+parsing/__pycache__/
