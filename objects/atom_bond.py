@@ -19,7 +19,7 @@ class _Atom:
     def __init__(self,
                  name: str,
                  element: str,
-                 index: dict = {},
+                 index=None,
                  **kwargs):
         """
         The base class used for atom types. These are used as the second level data structure within the graph objects
@@ -30,6 +30,8 @@ class _Atom:
         :param kwargs:
         """
         # TODO: Possibly rework the atom class to replace the atom dict factory for more consistency
+        if index is None:
+            index = {}
         self.element = element
         # may or may not check element types
 
@@ -44,21 +46,24 @@ class _Atom:
         self.hybridisation = None
         self.is_aromatic = None
         self.is_conjugated = None
+        self.partial_charge = None
         self.radical_electrons = 0
         self.stereo = None
 
         if 'valence' in kwargs:
             self.valence = kwargs['valence']
-        elif 'formal_charge' in kwargs:
+        if 'formal_charge' in kwargs:
             self.formal_charge = kwargs['formal_charge']
-        elif 'non_bonded_electrons' in kwargs:
+        if 'non_bonded_electrons' in kwargs:
             self.non_bonded_electrons = kwargs['non_bonded_electrons']
-        elif 'hybridisation' in kwargs:
+        if 'hybridisation' in kwargs:
             self.hybridisation = kwargs['hybridisation']
-        elif 'is_aromatic' in kwargs:
+        if 'is_aromatic' in kwargs:
             self.is_aromatic = kwargs['is_aromatic']
-        elif 'is_conjugated' in kwargs:
+        if 'is_conjugated' in kwargs:
             self.is_conjugated = kwargs['is_conjugated']
+        if 'partial_charge' in kwargs:
+            self.partial_charge= kwargs['partial_charge']
 
     def get_index(self, id_type: str = 'name'):
         """
@@ -153,6 +158,7 @@ class Atom2D(_Atom):
     """
     2D Atom representation, has no additional functionality from base class
     """
+
     def __init__(self, name, element, **kwargs):
         super().__init__(name, element, **kwargs)
 
@@ -162,6 +168,7 @@ class Atom3D(_Atom):
     def __init__(self, name, element, coordinates, **kwargs):
         super().__init__(name, element, **kwargs)
         self.coordinates = coordinates
+
 
 class RDKitAtom(_Atom):
 
@@ -269,4 +276,3 @@ class RDKitBond(_Bond):
 
     def GetStereo(self):
         return
-
