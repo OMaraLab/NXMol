@@ -71,7 +71,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
     def rmsdFit(self):
         return
 
-
     def lsqComponents(self):
         # these setups are used for both solving methods
 
@@ -154,11 +153,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         return results
 
     def lsqPartialChargeFit(self,
-                            total_charge: int = 0,
-                            round_places: int = 3,
-                            timeout: int = 60 * 5,
-                            minmax: bool = False,
-                            verbose: bool = False
+                            total_charge: int = 0
                             ):
 
         A, b = self.lsqComponents()
@@ -185,7 +180,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             'q_star': q  # this vector also has the Lagrangian's
         }
 
-
     def setPartialCharges(self, charges: dict, index_type='name'):
         for atom_id, value in charges.items():
             self.get_atom(atom_id, index_type=index_type).partial_charge = value
@@ -196,6 +190,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             charges={atom: value[0] for atom, value in
                      zip(self.atoms, self.partialChargeFit(solver=solver, round_charge=round_charge, **kwargs))}
         )
+
     def partialChargeFit(self, solver='lsq',
                          round_charge=False,
                          total_charge: int = 0,
@@ -208,9 +203,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
         if solver == 'lsq':
             q = self.lsqPartialChargeFit(
-                round_places=round_places,
                 total_charge=total_charge,
-                verbose=verbose
             )['q_star']
             if not round_charge:
                 return q[:-1]

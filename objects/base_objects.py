@@ -90,6 +90,10 @@ class _2DChemicalObj:
     # def graph(self, value):
     #     self._graph = value
 
+    # def __repr__(self):
+        # I've got a fun idea coming for this one
+        # https://github.com/vfscalfani/teletype_mols/blob/main/rdkit_print_mol_ascii.ipynb
+
     def add_atom(self, atom: Atom2D) -> None:
         if not isinstance(atom, Atom2D): # not sure if we actually want to add atoms this way
             # might make it  easier to enforce minimum information
