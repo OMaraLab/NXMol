@@ -8,6 +8,37 @@ from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D
 from chemistry_data_structure.objects.molecular_entity import Molecule2D
 from networkx.algorithms import isomorphism
 
+from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D
+
+
+def get_start_and_end_structures(t1_pdb_fp, t2_pdb_fp, net_charge):
+    """
+    Parse pdb files to get start and end structures for tautomer transition.
+    :param t1_pdb_fp:
+    :param t2_pdb_fp:
+    :param net_charge:
+    :return:
+    """
+
+    with open(t1_pdb_fp, "r") as t1_file:
+        t1 = pdb_to_Molecule3D(t1_file.read(), net_charge=net_charge, assign_bond_orders_and_charges=True)
+
+    with open(t2_pdb_fp, "r") as t2_file:
+        t2 = pdb_to_Molecule3D(t2_file.read(), net_charge=net_charge, assign_bond_orders_and_charges=True)
+
+    # print("T1 Nodes: ", t1.graph.nodes)
+    # print("T1 Edges: ", t1.graph.edges)
+    # print("T1 Bond Orders: ", t1.bond_orders)
+    # print("T1 Formal Charges: ", t1.formal_charges)
+    # print("T1 Non Bonded Electrons: ", t1.non_bonded_electrons)
+    # print("T2 Nodes: ", t2.graph.nodes)
+    # print("T2 Edges: ", t2.graph.edges)
+    # print("T2 Bond Orders: ", t2.bond_orders)
+    # print("T2 Formal Charges: ", t2.formal_charges)
+    # print("T2 Non Bonded Electrons: ", t2.non_bonded_electrons)
+
+    return t1, t2
+
 
 def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
                                     mol_end: Molecule2D) -> Molecule2D:
@@ -36,8 +67,9 @@ def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
     assert GM.is_isomorphic(), "Backbone structures of two molecules not the same."
     backbone_mapping = GM.mapping
     reverse_mapping = dict((v, k) for k, v in backbone_mapping.items())
-    print("Mapping: ", backbone_mapping)
-    print("Reverse Mapping: ", reverse_mapping)
+
+    # print("Mapping: ", backbone_mapping)
+    # print("Reverse Mapping: ", reverse_mapping)
 
     # get bond order differences between edges and formal charge differences
     # in heavy atom bonded structure
@@ -87,7 +119,6 @@ def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
     # heavy atoms, with edge labels as -1 if removed, 0 if the same and +1 if added
 
     # get heavy atoms for trans mol
-    # TODO: modify this to return rdkit compatible atoms and bonds and mol (maybe lol)
     # TODO: incorporate aromatic + conjugation information
     n_id = 0
     trans_atoms = []
@@ -170,4 +201,3 @@ def gen_tautomer_trans_structure_2D(mol_start: Molecule2D,
 if __name__ == "__main__":
     # DEBUG ONLY
     mol_1 = Molecule2D()
-    print()

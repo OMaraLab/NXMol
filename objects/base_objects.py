@@ -12,8 +12,8 @@ from chemistry_data_structure.helpers.io import write_to_debug
 from chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D, _Bond, _Atom
 from chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
 
-# TODO: might rework this to replace the foactory classes for proper integration
-
+# TODO: might rework this to replace the factory classes for proper integration
+ELEMENT_COLOURS = {'H': '#eeeeee', 'C': 'grey', 'O': '#ff91a4', 'N': '#5dabf5'}
 
 class _2DChemicalObj:
     """
@@ -105,9 +105,6 @@ class _2DChemicalObj:
 
     def add_bond(self, atom1_name: str, atom2_name: str, bond: Bond2D) -> None:
         """
-        TODO Need to decide if a bond will reference atom names or actual atom elements, or just elements
-            (Definitely reference names, as it currently is! -Joe)
-        and then adding a bond will create the link
         :param bond:
         :return:
         """
@@ -183,41 +180,83 @@ class _2DChemicalObj:
         The returned subgraph view's attributes are linked to the base graph.
         :return: nx.graph
         """
-        print(self.atoms.values())
         heavy_atoms = [a.name for a in self.atoms.values() if a.element != 'H']
-        print("Heavy atoms: ", heavy_atoms)
         return self.graph.subgraph(heavy_atoms)
 
-    def draw_graph(self, show: bool = True, save_name: str = None):
+    def draw_graph(self,
+                   fixed_heavy_atoms: dict = None,
+                   backbone_only: bool = False,
+                   show: bool = True,
+                   save_fp: str = None):
         """
         Draws the molecular graph in kamada kawai layout.
         :param show: if true, show plot, otherwise don't
-        :param save_name: if not none, save the drawing as savename.png
+        :param save_name: if specified, save the png to the given fp.
         """
 
+        if backbone_only:
+            graph = self.get_backbone_graph()
+            formal_charges = {a.get_index(): a.formal_charge for a in graph.nodes.values()}
+            bond_orders = {frozenset(bond_ids): self.get_bond(bond_ids[0], bond_ids[1]).order for bond_ids in graph.edges()}
+        else:
+            graph = self._graph
+            formal_charges = self.formal_charges
+            bond_orders = self.bond_orders
+
+        # create colour map of element colours
+        colour_map = []
+        for atom_name in graph.nodes():
+            colour_map.append(ELEMENT_COLOURS[atom_name.strip("0123456789")])
+
         # setup layouts
-        pos = nx.kamada_kawai_layout(self._graph)
-        offset_pos = {k: (v[0] + 0.06, v[1] + 0.02) for k, v in pos.items()}
+        if fixed_heavy_atoms is not None:
+            pos = nx.spring_layout(graph, pos=fixed_heavy_atoms, fixed=fixed_heavy_atoms.keys())
+        else:
+            pos = nx.spring_layout(graph)
+
+        #pos = nx.spring_layout(self._graph)
+        if backbone_only:
+            offset_pos = {k: (v[0] + 0.5, v[1] + 0.15) for k, v in pos.items()}
+        else:
+            offset_pos = {k: (v[0] + 0.65, v[1] + 0.2) for k, v in pos.items()}
+
 
         # draw graph, with node and edge labels
-        nx.draw(self._graph, pos=pos, with_labels=True, font_color='white')
-        nx.draw_networkx_labels(self._graph, offset_pos, self.formal_charges,
+        plt.cla()
+        nx.draw(graph, pos=pos, with_labels=True, font_size=10,
+                font_color='black', node_color=colour_map, node_size=500, edge_color='black')
+        node_path_coll = plt.gca().collections[0]
+        node_path_coll.set_edgecolor("#afafaf")
+        node_path_coll.set_lw(2)
+        edge_path_coll = plt.gca().collections[1]
+        edge_path_coll.set_lw(1.5)
+        nx.draw_networkx_labels(graph, offset_pos, formal_charges,
                                 font_color='red', font_size=10)
-        nx.draw_networkx_edge_labels(self._graph, pos, self.bond_orders)
+        nx.draw_networkx_edge_labels(graph, pos, bond_orders)
+
+        if backbone_only:
+            plt.margins(x=0.2, y=0.2)
+        else:
+            plt.margins(x=0.1, y=0.1)
 
         # optionally show or save molecular graph
         if show:
             plt.show()
             plt.cla()
-        if save_name is not None:
-            plt.savefig(f'test/results/{save_name}.png', format='png')
+        if save_fp is not None:
+            plt.savefig(save_fp, format='png')
+            plt.cla()
 
-    def get_graph_adjacency_matrix(self):
+    def get_graph_adj_mat(self, as_numpy: bool = True):
         """
         Return adjacency matrix representation of molecular graph.
-        :return:
+        :param: as_numpy: if true, return as numpy array, otherwise return as list of lists
         """
-        return nx.adjacency_matrix(self._graph)
+        adj = nx.to_numpy_array(self._graph).astype('int32')
+        if as_numpy:
+            return adj
+        else:
+            return adj.tolist()
 
     def get_neighbour_counts(self, element: str):
         """
@@ -266,7 +305,7 @@ class _2DChemicalObj:
         :return:
         """
         from pulp import LpProblem, LpMinimize, LpInteger, LpVariable, LpBinary, LpStatus, value
-        from pulp import PulpSolverError
+        from pulp import PULP_CBC_CMD, PulpSolverError
 
         MIN_ABSOLUTE_CHARGE, MAX_ABSOLUTE_CHARGE = 0, 9
         MIN_BOND_ORDER, MAX_BOND_ORDER = 1, 3
@@ -339,11 +378,11 @@ class _2DChemicalObj:
         OBJECTIVES = [
                          sum(absolute_charges.values()),
                          # FIXME: sum(charges.values()) as close to zero as possible (cf example_wang_8 and example_wang_9)
-                         sum([charge * ELECTRONEGATIVITIES[self.get_atom(atom_id).element] for (atom_id, charge) in
+                         sum([charge * ELECTRONEGATIVITIES[self.get_atom(atom_id).element.upper()] for (atom_id, charge) in
                                   charges.items()]),
                      ] + (
                          [sum(
-                             [bond_order * ELECTRONEGATIVITIES[self.get_atom(atom_id).element] for (bond, bond_order) in
+                             [bond_order * ELECTRONEGATIVITIES[self.get_atom(atom_id).element.upper()] for (bond, bond_order) in
                               bond_orders.items() for atom_id in bond])]
                          if len(bond_orders) > 0
                          else []
@@ -357,9 +396,9 @@ class _2DChemicalObj:
                 non_bonded_electrons.values()) == total_electrons, 'Known total electrons')
 
         for atom in self.atoms.values():
-            problem += charges[atom.get_index()] == VALENCE_ELECTRONS[atom.element] - sum(
+            problem += charges[atom.get_index()] == VALENCE_ELECTRONS[atom.element.upper()] - sum(
                 [bond_orders[bond] for bond in self.bonds if atom.get_index() in bond]) - ELECTRON_MULTIPLIER * \
-                       non_bonded_electrons[atom.get_index()], '{element}_{index}'.format(element=atom.element,
+                       non_bonded_electrons[atom.get_index()], '{element}_{index}'.format(element=atom.element.upper(),
                                                                                     index=atom.get_index())
 
         # Deal with absolute values
@@ -370,12 +409,12 @@ class _2DChemicalObj:
                 i=atom.get_index())
 
             if enforce_octet_rule:
-                if atom.element not in {'B', 'BE', 'P', 'S'}:
+                if atom.element.upper() not in {'B', 'BE', 'P', 'S'}:
                     problem += (
                         ELECTRONS_PER_BOND * sum(
                             [bond_orders[bond] for bond in self.bonds if atom.get_index() in bond]) + ELECTRON_MULTIPLIER *
-                        non_bonded_electrons[atom.get_index()] == (2 if atom.element in {'H', 'HE'} else 8),
-                        'Octet for atom {element}_{index}'.format(element=atom.element, index=atom.get_index()),
+                        non_bonded_electrons[atom.get_index()] == (2 if atom.element.upper() in {'H', 'HE'} else 8),
+                        'Octet for atom {element}_{index}'.format(element=atom.element.upper(), index=atom.get_index()),
                     )
 
         for (bond, bond_order) in bond_order_constraints:
@@ -397,7 +436,9 @@ class _2DChemicalObj:
 
         # ===== SOLVING =====
         try:
-            problem.sequentialSolve(OBJECTIVES)
+            #problem.setObjective(sum(OBJECTIVES))
+            #problem.solve(PULP_CBC_CMD(maxSeconds=100))
+            problem.sequentialSolve(OBJECTIVES) #timeout=ILP_SOLVER_TIMEOUT)
             assert problem.status == 1, (self.name, LpStatus[problem.status])
         except (AssertionError, PulpSolverError) as e:
             args_id = ','.join(map(str, [enforce_octet_rule, allow_radicals, bond_order_constraints]))
@@ -405,7 +446,7 @@ class _2DChemicalObj:
             problem.writeLP(debug_file)
             #self.write_graph('DEBUG', output_size=(1000, 1000))
             stderr.write('\n' + 'Failed LP written to "{0}"'.format(debug_file))
-            raise
+            raise PulpSolverError
 
         write_to_debug(debug, 'Objective function values: {0}'.format([value(objective) for objective in OBJECTIVES]))
 
@@ -424,6 +465,8 @@ class _2DChemicalObj:
                 self.get_atom(variable_substr).non_bonded_electrons = round(v.varValue) * ELECTRON_MULTIPLIER
                 if allow_radicals and self.get_atom(variable_substr).non_bonded_electrons % 2 == 1:
                     stderr.write('Warning: Radical molecule...')
+            elif variable_type == 'A':
+                pass
             else:
                 raise Exception('Unknown variable type: {0}'.format(variable_type))
         write_to_debug(debug, 'molecule_name', self.name)

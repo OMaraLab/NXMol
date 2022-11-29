@@ -114,7 +114,7 @@ def pdb_to_Molecule3D(pdb_str: str,
         atoms.append(
             Atom3D(
                 index={'pdb': int(pdb_atom.index), 'nid': n_id},
-                name=pdb_atom.name,
+                name=pdb_atom.name.replace("_", ""),
                 element=pdb_atom.element,
                 coordinates=pdb_atom.coordinates
             )
@@ -135,7 +135,7 @@ def pdb_to_Molecule3D(pdb_str: str,
     # print("PDB Bonds: ", pdb_bonds)
 
     # convert pdb_bonds to chem_ds bonds
-    pdb_atom_index_name_map = {pdb_atom.index: pdb_atom.name for pdb_atom in pdb_atoms}
+    pdb_atom_index_name_map = {pdb_atom.index: pdb_atom.name.replace("_", "") for pdb_atom in pdb_atoms}
     bonds = []
     for pdb_bond in pdb_bonds:
         a1_ind, a2_ind = list(pdb_bond)

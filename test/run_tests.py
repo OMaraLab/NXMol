@@ -1,35 +1,9 @@
 import unittest
+
+import networkx as nx
+
 from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D
-from chemistry_data_structure.tools import gen_tautomer_trans_structure_2D
-
-
-def get_start_and_end_structures(t1_fp, t2_fp, net_charge):
-    """
-    Parse pdb files for test tautomers.
-    :param t1_fp:
-    :param t2_fp:
-    :param net_charge:
-    :return:
-    """
-
-    with open(t1_fp, "r") as t1_file:
-        t1 = pdb_to_Molecule3D(t1_file.read(), net_charge=net_charge, assign_bond_orders_and_charges=True)
-
-    with open(t2_fp, "r") as t2_file:
-        t2 = pdb_to_Molecule3D(t2_file.read(), net_charge=net_charge, assign_bond_orders_and_charges=True)
-
-    print("T1 Nodes: ", t1.graph.nodes)
-    print("T1 Edges: ", t1.graph.edges)
-    print("T1 Bond Orders: ", t1.bond_orders)
-    print("T1 Formal Charges: ", t1.formal_charges)
-    print("T1 Non Bonded Electrons: ", t1.non_bonded_electrons)
-    print("T2 Nodes: ", t2.graph.nodes)
-    print("T2 Edges: ", t2.graph.edges)
-    print("T2 Bond Orders: ", t2.bond_orders)
-    print("T2 Formal Charges: ", t2.formal_charges)
-    print("T2 Non Bonded Electrons: ", t2.non_bonded_electrons)
-
-    return t1, t2
+from chemistry_data_structure.tools import gen_tautomer_trans_structure_2D, get_start_and_end_structures
 
 
 class TransitionStructureTest(unittest.TestCase):
@@ -73,6 +47,41 @@ class TransitionStructureTest(unittest.TestCase):
         t1.draw_graph()
         t2.draw_graph()
         trans_mol.draw_graph()
+
+    def test_glycine_tautomers(self):
+
+        t1, t2 = get_start_and_end_structures("data/pdb/glycine_t1.pdb", "data/pdb/glycine_t2.pdb", 0)
+
+        # gen transition structure
+        trans_mol = gen_tautomer_trans_structure_2D(t1, t2)
+
+        # make fixed heavy atom node positions
+        heavy_atom_keys = t2.get_backbone_graph().nodes
+        fixed_heavy_atom_positions = {'N1': (0, 1),
+                                      'C1': (2, 1),
+                                      'C2': (4, 1),
+                                      'O1': (6, 2),
+                                      'O2': (6, 0)}
+
+        t2_fixed_heavy_atom_positions = {'N1': (0, 1),
+                                          'C2': (2, 1),
+                                          'C1': (4, 1),
+                                          'O1': (6, 2),
+                                          'O2': (6, 0)}
+
+        print(heavy_atom_keys)
+
+        # display plots
+        t1.draw_graph(fixed_heavy_atom_positions)
+        t2.draw_graph(t2_fixed_heavy_atom_positions)
+        trans_mol.draw_graph(fixed_heavy_atom_positions)
+
+        t1.draw_graph(fixed_heavy_atom_positions, backbone_only=True)
+        t2.draw_graph(t2_fixed_heavy_atom_positions, backbone_only=True)
+
+        self.assertEqual(True, True)
+
+
 
 
 class ParserTest(unittest.TestCase):
