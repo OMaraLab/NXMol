@@ -191,7 +191,7 @@ def GAMESS_to_Molecule3D(
     # need to escape asterixes and newlines in regex
     # ATOM_BLOCK_HEADING = r"      \*\*\*\*\* EQUILIBRIUM GEOMETRY LOCATED \*\*\*\*\*\n COORDINATES OF ALL ATOMS ARE \(ANGS\)\n   ATOM   CHARGE       X              Y              Z\n ------------------------------------------------------------\n"
 
-    # `Y{x}` matches Y, x times, y can be a space
+    # `Y{x}` matches Y, x times, Y can be a space
     ATOM_BLOCK_HEADING = r" {6}\*{5} EQUILIBRIUM GEOMETRY LOCATED \*{5}\n COORDINATES OF ALL ATOMS ARE \(ANGS\)\n   ATOM   CHARGE {7}X {14}Y {14}Z\n -{60}\n"
 
     # NEXT_BLOCK_HEADING = r"          INTERNUCLEAR DISTANCES \(ANGS\.\)\n          ------------------------------"
