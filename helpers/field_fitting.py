@@ -1,8 +1,9 @@
 ##### multifitted ESP field fitting machinery is located here
-# TODO: conversation about moving the indivudual fittin here as well should be had
+# TODO: conversation about moving the individual fittin here as well should be had
 
 import numpy as np
 from numpy.linalg import lstsq
+# https://stackoverflow.com/questions/44508561/algorithm-that-numpy-is-using-for-numpy-linalg-lstsq
 
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 
@@ -24,12 +25,15 @@ class MoleculeFieldFitter:
         # solved = 1
         # error = -1
         self._status = 0
+        self._num_constraints = 0
         self._constraint_matrix: np.array = None
         self._coeff_matrix: np.array = None
         self._target_vector: np.array = None
         self._constraint_target: np.array = None
         self._transformed_target: np.array = None
         self._transformed_coeff_matrix: np.array = None
+        self._solution: np.array = None
+        self._residuals: np.array = None
 
         self._index_lookup: dict = {}
         self._index_backlookup: dict = {}
@@ -76,8 +80,6 @@ class MoleculeFieldFitter:
             col_count:col_count + shape[1]
             ] = single_coeffs[mol_index]
             self._target_vector[row_count:row_count + shape[0]] = single_esps[mol_index]
-            row_count += shape[0]
-            col_count += shape[1]
 
             # at this generation point also want to generate the index lookup and backlookup dictionaries
             # these will be linked to the internal indexes of the atom orders as they are self consistent
@@ -95,17 +97,19 @@ class MoleculeFieldFitter:
 
                 self._index_backlookup[col_count + molecule_col_iter] = (self._molecules[mol_index], molecule_col_iter)
 
+            row_count += shape[0]
+            col_count += shape[1]
+
     def load_constraints(self,
                          symmetry_constraints: dict,
                          sum_constraints: dict,
-                         index_type: str,
+                         # index_type: str,
                          ):
         """
         Constraints should be of the form:
         {'group': {molecule_obj}: [internal atom indexes]}
         :param sum_constraints:
         :param symmetry_constraints:
-        :param index_type: Not left with default, atom indexing poses major point for error
         :return:
         """
         # size of the constraint matrix is given by M+N-G
@@ -120,13 +124,12 @@ class MoleculeFieldFitter:
             for group_dict in symmetry_constraints.values()
         )
 
-        num_constraints = len(sum_constraints) + num_constrained_atoms - len(symmetry_constraints)
+        self._num_constraints = len(sum_constraints) + num_constrained_atoms - len(symmetry_constraints)
 
         # need one row for every constraint and one row for every atom
-        self._constraint_matrix = np.zeros((num_constraints,
+        self._constraint_matrix = np.zeros((self._num_constraints,
                                             self.num_atoms))
-        self._constraint_target = np.zeros((num_constraints, 1))
-
+        self._constraint_target = np.zeros((self._num_constraints, 1))
 
         # iterate through the groups, and using the lookup dictionaries to map the molecule atom index
         # to the filters internal matrix columns
@@ -148,11 +151,11 @@ class MoleculeFieldFitter:
 
         # iterate over the sum constraints, using similar methods for looking up indices
         for sum_dict in sum_constraints:
-            flattened_group = [(molecule, atom_index) for molecule, atom_list in sum_dict['atoms']
+            flattened_group = [(molecule, atom_index) for molecule, atom_list in sum_dict['atoms'].items()
                                for atom_index in atom_list]
             for mol_atom_pair in flattened_group:
                 self._constraint_matrix[constraint_iter, self._index_lookup[mol_atom_pair]] = 1.0
-                self._constraint_target[self._index_lookup[self._index_lookup]] = sum_dict['value']
+            self._constraint_target[constraint_iter] = sum_dict['value']
             constraint_iter += 1
 
     def fit(self):
@@ -160,4 +163,33 @@ class MoleculeFieldFitter:
         Function to generate the assigned partial charges
         :return:
         """
-        raise NotImplementedError
+
+        # generate the new matrices used for the fitting procedure (with constraints)
+
+        self._transformed_coeff_matrix = np.zeros(
+            (self._num_constraints + self.num_atoms, self._num_constraints + self.num_atoms)
+        )
+
+        self._transformed_coeff_matrix[:self.num_atoms, :self.num_atoms] = self._coeff_matrix.T @ self._coeff_matrix
+        self._transformed_coeff_matrix[self.num_atoms:, :self.num_atoms] = self._constraint_matrix
+        self._transformed_coeff_matrix[:self.num_atoms, self.num_atoms:] = self._constraint_matrix.T
+
+        self._transformed_target = np.zeros((self.num_atoms + self._num_constraints, 1))
+        self._transformed_target[:self.num_atoms] = self._coeff_matrix.T @ self._target_vector
+        self._transformed_target[self.num_atoms:] = self._constraint_target
+
+        self._solution, self._residuals, rank, singular_values = lstsq(self._transformed_coeff_matrix,
+                                                                       self._transformed_target,
+                                                                       rcond=None)
+        self._status = 1
+        return self._solution
+
+    def transfer_partial_charges(self):
+        if self._status != 1:
+            print('system not yet fitted')
+            raise Exception  # todo make a new exception
+
+        for molecule in self.molecules:
+            for atom_internal_index in range(molecule.num_atoms):
+                molecule.atom_objects[atom_internal_index].partial_charge = \
+                    self._solution[self._index_lookup[molecule, atom_internal_index]][0]

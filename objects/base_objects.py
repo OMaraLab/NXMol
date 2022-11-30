@@ -45,6 +45,14 @@ class _2DChemicalObj:
 
         # other properties
 
+    # def __repr__(self):
+    #     return f'{type(self).__name__}: {self.chemical_formula}'
+    #
+    # @property
+    # def chemical_formula(self):
+    #     elements = [a.element for a in self.atom_objects]
+    #     return ''.join(f'{e}{elements.count(e)}' for e in list(set(elements)))
+
     @property
     def atoms(self):
         # TODO: we should modify this to be atom_ids, just need to refactor
