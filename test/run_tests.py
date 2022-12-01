@@ -2,7 +2,7 @@ import unittest
 
 import networkx as nx
 
-from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D
+from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D, GAMESS_to_Molecule3D
 from chemistry_data_structure.tools import gen_tautomer_trans_structure_2D, get_start_and_end_structures
 
 
@@ -127,7 +127,8 @@ class ChemObjectTests(unittest.TestCase):
 
 
 class MultiFitterTests(unittest.TestCase):
-    pass
+    molecules = [GAMESS_to_Molecule3D(open(path).read()) for path in
+                 [f'data/qm/{}/wB97X_631Gd_SMD_water.out' for molid in [939674, 939678, 939684, 1162430]]]
 
 if __name__ == '__main__':
     unittest.main()
