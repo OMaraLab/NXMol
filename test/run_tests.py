@@ -82,8 +82,6 @@ class TransitionStructureTest(unittest.TestCase):
         self.assertEqual(True, True)
 
 
-
-
 class ParserTest(unittest.TestCase):
 
     def test_pdb_parsing(self):
@@ -127,6 +125,9 @@ class ChemObjectTests(unittest.TestCase):
 
         self.assertEqual(mol.get_rings(), [('C8', 'N3', 'C7', 'C6', 'C5', 'C4')])
 
+
+class MultiFitterTests(unittest.TestCase):
+    pass
 
 if __name__ == '__main__':
     unittest.main()
