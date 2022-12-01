@@ -4,11 +4,12 @@
 import numpy as np
 from numpy.linalg import lstsq
 # https://stackoverflow.com/questions/44508561/algorithm-that-numpy-is-using-for-numpy-linalg-lstsq
+import pulp
 
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 
 
-# will probably set the fitter up as an object itself
+# todo: maybe use the actual atom objects as indexes for the dictionary rather than the internal atom indexes
 
 class MoleculeFieldFitter:
     def __init__(self,
@@ -26,14 +27,19 @@ class MoleculeFieldFitter:
         # error = -1
         self._status = 0
         self._num_constraints = 0
-        self._constraint_matrix: np.array = None
+        self._constraint_matrix: np.array = np.array([])
         self._coeff_matrix: np.array = None
         self._target_vector: np.array = None
         self._constraint_target: np.array = None
         self._transformed_target: np.array = None
         self._transformed_coeff_matrix: np.array = None
         self._solution: np.array = None
+        self._solution_round: np.array = None
         self._residuals: np.array = None
+
+        # constraints
+        self._flat_symmetry_constraints: dict = None
+        self._flat_sum_constraints: list[tuple[tuple[Molecule3D,list[int]],float]] = None
 
         self._index_lookup: dict = {}
         self._index_backlookup: dict = {}
@@ -101,8 +107,8 @@ class MoleculeFieldFitter:
             col_count += shape[1]
 
     def load_constraints(self,
-                         symmetry_constraints: dict,
-                         sum_constraints: dict,
+                         symmetry_constraints,
+                         sum_constraints,
                          # index_type: str,
                          ):
         """
@@ -131,6 +137,9 @@ class MoleculeFieldFitter:
                                             self.num_atoms))
         self._constraint_target = np.zeros((self._num_constraints, 1))
 
+        self._flat_sum_constraints = []
+        self._flat_symmetry_constraints = {}
+
         # iterate through the groups, and using the lookup dictionaries to map the molecule atom index
         # to the filters internal matrix columns
         constraint_iter = 0
@@ -149,6 +158,8 @@ class MoleculeFieldFitter:
 
                 constraint_iter += 1
 
+            self._flat_symmetry_constraints[group_name] = flattened_group
+
         # iterate over the sum constraints, using similar methods for looking up indices
         for sum_dict in sum_constraints:
             flattened_group = [(molecule, atom_index) for molecule, atom_list in sum_dict['atoms'].items()
@@ -157,6 +168,8 @@ class MoleculeFieldFitter:
                 self._constraint_matrix[constraint_iter, self._index_lookup[mol_atom_pair]] = 1.0
             self._constraint_target[constraint_iter] = sum_dict['value']
             constraint_iter += 1
+
+            self._flat_sum_constraints.append((flattened_group,sum_dict['value']))
 
     def fit(self):
         """
@@ -170,19 +183,84 @@ class MoleculeFieldFitter:
             (self._num_constraints + self.num_atoms, self._num_constraints + self.num_atoms)
         )
 
-        self._transformed_coeff_matrix[:self.num_atoms, :self.num_atoms] = self._coeff_matrix.T @ self._coeff_matrix
-        self._transformed_coeff_matrix[self.num_atoms:, :self.num_atoms] = self._constraint_matrix
-        self._transformed_coeff_matrix[:self.num_atoms, self.num_atoms:] = self._constraint_matrix.T
+        if self._num_constraints > 0:
+            self._transformed_coeff_matrix[:self.num_atoms, :self.num_atoms] = self._coeff_matrix.T @ self._coeff_matrix
+            self._transformed_coeff_matrix[self.num_atoms:, :self.num_atoms] = self._constraint_matrix
+            self._transformed_coeff_matrix[:self.num_atoms, self.num_atoms:] = self._constraint_matrix.T
 
-        self._transformed_target = np.zeros((self.num_atoms + self._num_constraints, 1))
-        self._transformed_target[:self.num_atoms] = self._coeff_matrix.T @ self._target_vector
-        self._transformed_target[self.num_atoms:] = self._constraint_target
+            self._transformed_target = np.zeros((self.num_atoms + self._num_constraints, 1))
+            self._transformed_target[:self.num_atoms] = self._coeff_matrix.T @ self._target_vector
+            self._transformed_target[self.num_atoms:] = self._constraint_target
+
+        else:
+            self._transformed_coeff_matrix = self._coeff_matrix
+            self._transformed_target = self._target_vector
 
         self._solution, self._residuals, rank, singular_values = lstsq(self._transformed_coeff_matrix,
                                                                        self._transformed_target,
                                                                        rcond=None)
         self._status = 1
         return self._solution
+
+    def round_post_hoc(self,
+                       round_places: int = 3,
+                       timeout: int = 10*60):
+        """
+        Rounds the assigned partial charges to an arbitrary decimal place
+        Performs a minmax of the residuals between the rounded values and the original
+        :return: <np.array> containing the assigned charges ordered by internal atom index
+        """
+        self._solution_round = np.zeros((self.num_atoms, 1))
+
+        roundProblem = pulp.LpProblem('SystemRounding', pulp.LpMinimize)
+
+        ### Variables
+        atoms_vars = pulp.LpVariable.dicts('', range(self.num_atoms), lowBound=-(10 ** round_places - 1),
+                                           upBound=(10 ** round_places - 1), cat='Integer')
+        abs_vars = pulp.LpVariable.dicts('abs', range(self.num_atoms), lowBound=0)
+        max_residual = pulp.LpVariable('max_charge', lowBound=0)
+
+        ### Constraints
+
+        for atom_index_internal in range(self.num_atoms):
+
+            # constructing the absolute value variables of each charge
+            # need powers of 10 as setup rounded values variables as integers with units of 10^-(round_places)
+            roundProblem += abs_vars[atom_index_internal] >= (
+                    atoms_vars[atom_index_internal] - self._solution[atom_index_internal][0] * 10 ** round_places)
+            roundProblem += abs_vars[atom_index_internal] >= -(
+                    atoms_vars[atom_index_internal] - self._solution[atom_index_internal][0] * 10 ** round_places)
+
+            # set up constraint to define the maximum residual
+            roundProblem += max_residual >= abs_vars[atom_index_internal]
+
+        #enforcing the existing constraints on the system
+
+        # daisy chaining the equivalence (symmetry) groups
+        for group_name, pairs in self._flat_symmetry_constraints.items():
+            for p_1, p_2 in zip(pairs[:-1], pairs[1:]):
+                roundProblem += atoms_vars[self._index_lookup[p_1]] == atoms_vars[self._index_lookup[p_2]]
+
+        for pairs, charge in self._flat_sum_constraints:
+            roundProblem += sum(atoms_vars[self._index_lookup[p]] for p in pairs) == charge
+
+        # Set the objective as minimising the maximum residual
+        roundProblem += max_residual
+
+        solver = pulp.apis.PULP_CBC_CMD(
+            maxSeconds=timeout,
+            threads=4,
+            timeMode="cpu")
+
+        status = roundProblem.solve(solver=solver)
+
+        if roundProblem.status != 1:
+            print('ILP rounding failure')
+            raise Exception  # todo make own exception
+
+        # slice notation means this line will throw an error if vectors are incorrectly sized
+        # as it will attempt to broadcast the values rather than overwrite the variable
+        self._solution_round[:] = np.array([pulp.value(a) for a in atoms_vars.values()]).reshape(-1, 1)*10**-round_places
 
     def transfer_partial_charges(self):
         if self._status != 1:
