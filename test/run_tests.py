@@ -140,7 +140,7 @@ class MultiFitterTests(unittest.TestCase):
     for m, ref in zip(molecules, reference_data):
         m.setfitPartialCharges()
         if verbose:
-            print(f'\n\n\nff: {list(ref["fits"].values())[0]["rmsd"][0]}\npy: {self.partialChargeRMSD()}')
+            print(f'\n\n\nff: {list(ref["fits"].values())[0]["rmsd"][0]}\npy: {m.partialChargeRMSD()}')
             print('Atom Name\tff charge\tpython charge\tresid')
         for ff_atom_name, ref_atom_data in list(ref['fits'].values())[0]['sites'].items():
             ref_charge = ref_atom_data['fit_result']['charge'][0]

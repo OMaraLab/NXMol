@@ -56,6 +56,14 @@ class MoleculeFieldFitter:
     def num_atoms(self):
         return self._coeff_matrix.shape[1]
 
+    @property
+    def sum_constraints(self):
+        return self._flat_sum_constraints
+
+    @property
+    def symmetry_constraints(self):
+        return self._flat_symmetry_constraints
+
     def add_molecule(self, molecule: Molecule3D):
         if not isinstance(molecule, Molecule3D):
             raise TypeError('molecule must be of type Molecule3D')
@@ -271,3 +279,4 @@ class MoleculeFieldFitter:
             for atom_internal_index in range(molecule.num_atoms):
                 molecule.atom_objects[atom_internal_index].partial_charge = \
                     self._solution[self._index_lookup[molecule, atom_internal_index]][0]
+
