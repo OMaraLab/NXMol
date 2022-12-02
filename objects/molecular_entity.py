@@ -146,7 +146,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             'q': q,
             'charge_vars': atoms_vars,
             'total_charge_const': tot_charge_const,
-            'moddel': model
+            'model': model
 
         }
 
@@ -261,6 +261,11 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             return self.gurobiPartialChargeFit(round_charge=round_charge,
                                                total_charge=total_charge,
                                                verbose=verbose)['q']
+
+    def partialChargeRMSD(self) -> float:
+        A, b = self.lsqComponents()
+        partialChargeVector = np.array([a.partial_charge for a in self.atom_objects]).reshape(-1,1)
+        return np.sqrt(1/self.num_atoms * sum((A @ partialChargeVector - b)**2))
 
     def writePDB(self):
         return

@@ -129,6 +129,7 @@ class _2DChemicalObj:
             return self._graph.nodes[index]
         else:
             return [a for a in self._graph._node.values() if a._index[index_type] == index][0]
+            # return next((d for d in self._graph._node.values() if d[index_type] == index), None)
 
     def get_atoms(self, index: List, index_type='name'):
         """
@@ -141,6 +142,8 @@ class _2DChemicalObj:
             return [self._graph.nodes[i] for i in index]
         else:
             return [[a for a in self._graph._node.values() if a._index[index_type]==i][0] for i in index]
+            # return [next((d for d in self._graph._node.values() if d[index_type] == i), None)
+            #         for i in index]
 
     def get_heavy_atoms(self):
         """

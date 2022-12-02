@@ -107,8 +107,8 @@ class MoleculeFieldFitter:
             col_count += shape[1]
 
     def load_constraints(self,
-                         symmetry_constraints,
-                         sum_constraints,
+                         symmetry_constraints = None,
+                         sum_constraints = None,
                          # index_type: str,
                          ):
         """
