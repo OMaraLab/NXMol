@@ -4,12 +4,194 @@
 import numpy as np
 from numpy.linalg import lstsq
 # https://stackoverflow.com/questions/44508561/algorithm-that-numpy-is-using-for-numpy-linalg-lstsq
-import pulp
+import pulp  # todo might set this as optional dependency
+from scipy.spatial import distance_matrix
+from typing import Optional, Any, Union
 
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
+from chemistry_data_structure.objects.atom_bond import Atom3D
+
+# unions allow the constraints to be named or not when creating them
+SYMMETRY_TYPING = Union[list[dict[Any, list[Any]]], dict[Any, dict[Any, list[Any]]]]
+SUM_TYPING = Any  # todo this is a bit of a mess, will work out later
 
 
-# todo: maybe use the actual atom objects as indexes for the dictionary rather than the internal atom indexes
+# todo: maybe use the actual atom objects as keys for the dictionary rather than the internal atom indexes
+
+def _lsq_components(molecule: Molecule3D):
+    # these setups are used for both solving methods
+
+    # default load units are bohrs
+
+    # currently unknown units of the surface
+    # want rows to correspond to every atom for each grid point
+
+    # assumes a.u.
+    distance_pairs = distance_matrix(molecule._esp_grid_coords, molecule.atom_coord_matrix)
+    # atom coords read in as BOHR, might just convert this to Metres
+    A = 1 / distance_pairs  # don't need constant in a.u.
+    b = molecule._esp_grid_charge.reshape(-1, 1)  # turn 1d array into n arrays with 1 element each
+    return A, b
+
+
+def _lsq_charge_fit(molecules: list[Molecule3D],
+                    flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+                    flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None) -> np.array:
+    """
+    Internal function for performing the fitting process and setting up the constraint matrices based off the molecules
+    And the preprocessed constraint information
+    """
+
+    return
+
+
+def _generate_lsq_matrices(molecules: list[Molecule3D]):
+    """
+    also works for a single molecule
+    """
+    # separate out the individual esp and coefficient matrix data
+    single_coeffs, single_esps = zip(*[molecule.lsqComponents() for molecule in molecules])
+    index_lookup = {}
+    index_backlookup = {}
+
+    # start generating the system coefficient matrix
+    coeff_matrix = np.zeros(
+        (sum(a.shape[0] for a in single_coeffs), sum(a.shape[1] for a in single_coeffs))
+    )
+    esp_vector = np.zeros(
+        (sum(a.shape[0] for a in single_coeffs), 1)
+    )
+
+    # iteratively populate the diagonals of the coefficient matrix with the individual matrices
+    # and iteratively fill the full target esp values, since numpy doesn't natively support ragged shapes
+    row_count = 0
+    col_count = 0
+    for mol_index in range(len(molecules)):
+        shape = single_coeffs[mol_index].shape
+
+        coeff_matrix[row_count:row_count + shape[0],
+        col_count:col_count + shape[1]
+        ] = single_coeffs[mol_index]
+        esp_vector[row_count:row_count + shape[0]] = single_esps[mol_index]
+
+        # at this generation point also want to generate the index lookup and backlookup dictionaries
+        # these will be linked to the internal indexes of the atom orders as they are self consistent
+
+        # iterate over the atom indexes (which are not always super consistent)
+        # currently use the atom objects as indexes to remove any ambiguity
+        # todo need to write a sanity check in the unit tests that confirms this
+        for molecule_col_iter, atom_obj in enumerate(molecules[mol_index].atom_objects):
+            index_lookup[
+                molecules[mol_index], atom_obj
+            ] = col_count + molecule_col_iter
+
+            index_backlookup[col_count + molecule_col_iter] = (molecules[mol_index], atom_obj)
+
+        row_count += shape[0]
+        col_count += shape[1]
+
+    return index_lookup, index_backlookup, coeff_matrix, esp_vector
+
+
+def flatten_symmetry(molecules: list[Molecule3D],
+                     symmetry_groups: SYMMETRY_TYPING,
+                     index_type: str = 'name',
+                     molecule_map: Optional[dict[Any, Molecule3D]] = None
+                     ) -> dict[Any, list[tuple[Molecule3D, Atom3D]]]:
+    """
+    Function for flattening symmetry constraints of a typical format into a flattened format that uses object references
+    """
+    if molecule_map is None:
+        molecule_map = {molecule: molecule for molecule in molecules}
+
+    flat_symmetry_constraints = {}
+
+    if type(symmetry_groups) == dict:
+        pass
+    else:
+        # assume it is iterable and generate some names
+        symmetry_groups = {
+            f'sym_{jj}': group for jj, group in enumerate(symmetry_groups)
+        }
+
+    # iterate through the groups, and using the lookup dictionaries to map the molecule atom index
+    # to the filters internal matrix columns
+
+    for group_name, group_dict in symmetry_groups.items():
+        # flatten out the groups into key,val pair
+        flattened_group = [
+            (molecule_map[molecule_id],
+             molecule_map[molecule_id].get_atom(atom_index, index_type=index_type))
+            for molecule_id, atom_list in group_dict.items()
+            for atom_index in atom_list]
+
+        flat_symmetry_constraints[group_name] = flattened_group
+    return flat_symmetry_constraints
+
+
+def flatten_sum(molecules: list[Molecule3D],
+                sum_groups: SUM_TYPING,
+                index_type: str = 'name',
+                molecule_map: Optional[dict[Any, Molecule3D]] = None
+                ) -> dict[Any, list[tuple[tuple[Molecule3D, Atom3D], float]]]:
+    """
+    Function to flatten sum constraints of any typical format into named lists of molecule, atom pairs
+    Useful for checking information later
+    """
+    if molecule_map is None:
+        molecule_map = {molecule: molecule for molecule in molecules}
+
+    flat_sum_constraints = {}
+
+    if type(flat_sum_constraints) == dict:
+        pass
+    else:
+        # assume it is iterable and generate some names
+        sum_groups = {
+            f'sum_{jj}': group for jj, group in enumerate(sum_groups)
+        }
+
+    for group_name, group_dict in sum_groups.items():
+        flattened_group = [
+            ((molecule_map[molecule_id],
+              molecule_map[molecule_id].get_atom(atom_index, index_type=index_type)),
+             group_dict[1])
+            for molecule_id, atom_list in group_dict[0].items()
+            for atom_index in atom_list]
+        flat_sum_constraints[group_name] = flattened_group
+
+    return flat_sum_constraints
+
+
+def lsq_partial_charge_fit(molecule: Molecule3D,
+                           symmetry_constraints=None,
+                           sum_constraints=None,
+                           ):
+    A, b = _lsq_components(molecule)
+
+    A_star = np.zeros((molecule.num_atoms + 1, molecule.num_atoms + 1))  # each atom + one constraint
+    # assuming units of esp surface are kj*bohr/q
+    b_star = np.zeros((molecule.num_atoms + 1, 1))
+    b_star[:-1] = A.T @ b
+    b_star[-1] = total_charge
+
+    A_star[:molecule.num_atoms, :molecule.num_atoms] = A.T @ A
+
+    ## setting up total charge constraint
+    C = np.ones(molecule.num_atoms)
+    A_star[-1, :-1] = C
+    A_star[:-1, -1] = C.T
+
+    # q = inv(A.T @ A) @ A.T @ b
+    # q = inv(A_star) @ b_star
+    q = lstsq(A_star, b_star, rcond=None)
+
+    return {
+        'A_star': A_star,
+        'b_star': b_star,
+        'q_star': q  # this vector also has the Lagrangian's
+    }
+
 
 class MoleculeFieldFitter:
     def __init__(self,
@@ -39,7 +221,7 @@ class MoleculeFieldFitter:
 
         # constraints
         self._flat_symmetry_constraints: dict = None
-        self._flat_sum_constraints: list[tuple[tuple[Molecule3D,list[int]],float]] = None
+        self._flat_sum_constraints: list[tuple[tuple[Molecule3D, list[int]], float]] = None
 
         self._index_lookup: dict = {}
         self._index_backlookup: dict = {}
@@ -70,53 +252,9 @@ class MoleculeFieldFitter:
         # TODO: can currently add the same molecule more than once, need to check if this is intended behaviour
         self._molecules.append(molecule)
 
-    def generate_matrices(self):
-
-        # separate out the individual esp and coefficient matrix data
-        single_coeffs, single_esps = zip(*[molecule.lsqComponents() for molecule in self._molecules])
-
-        # start generating the system coefficient matrix
-        self._coeff_matrix = np.zeros(
-            (sum(a.shape[0] for a in single_coeffs), sum(a.shape[1] for a in single_coeffs))
-        )
-        self._target_vector = np.zeros(
-            (sum(a.shape[0] for a in single_coeffs), 1)
-        )
-
-        # iteratively populate the diagonals of the coefficient matrix with the individual matrices
-        # and iteratively fill the full target esp values, since numpy doesn't natively support ragged shapes
-        row_count = 0
-        col_count = 0
-        for mol_index in range(len(self.molecules)):
-            shape = single_coeffs[mol_index].shape
-
-            self._coeff_matrix[row_count:row_count + shape[0],
-            col_count:col_count + shape[1]
-            ] = single_coeffs[mol_index]
-            self._target_vector[row_count:row_count + shape[0]] = single_esps[mol_index]
-
-            # at this generation point also want to generate the index lookup and backlookup dictionaries
-            # these will be linked to the internal indexes of the atom orders as they are self consistent
-
-            # iterate over the atom indexes (which are not always super consistent
-            # todo: Currently uses the internal indexing (i.e. the index 'id' but the order they appear)
-            #  this is at least guaranteed a unique id and it is conistent with the ordering generated by
-            #  the esp field and location generation
-
-            # todo need to write a sanity check in the unit tests that confirms this
-            for molecule_col_iter in range(self._molecules[mol_index].num_atoms):
-                self._index_lookup[
-                    self._molecules[mol_index], molecule_col_iter
-                ] = col_count + molecule_col_iter
-
-                self._index_backlookup[col_count + molecule_col_iter] = (self._molecules[mol_index], molecule_col_iter)
-
-            row_count += shape[0]
-            col_count += shape[1]
-
     def load_constraints(self,
-                         symmetry_constraints = None,
-                         sum_constraints = None,
+                         symmetry_constraints=None,
+                         sum_constraints=None,
                          # index_type: str,
                          ):
         """
@@ -177,7 +315,7 @@ class MoleculeFieldFitter:
             self._constraint_target[constraint_iter] = sum_dict['value']
             constraint_iter += 1
 
-            self._flat_sum_constraints.append((flattened_group,sum_dict['value']))
+            self._flat_sum_constraints.append((flattened_group, sum_dict['value']))
 
     def fit(self):
         """
@@ -212,7 +350,7 @@ class MoleculeFieldFitter:
 
     def round_post_hoc(self,
                        round_places: int = 3,
-                       timeout: int = 10*60):
+                       timeout: int = 10 * 60):
         """
         Rounds the assigned partial charges to an arbitrary decimal place
         Performs a minmax of the residuals between the rounded values and the original
@@ -231,7 +369,6 @@ class MoleculeFieldFitter:
         ### Constraints
 
         for atom_index_internal in range(self.num_atoms):
-
             # constructing the absolute value variables of each charge
             # need powers of 10 as setup rounded values variables as integers with units of 10^-(round_places)
             roundProblem += abs_vars[atom_index_internal] >= (
@@ -242,7 +379,7 @@ class MoleculeFieldFitter:
             # set up constraint to define the maximum residual
             roundProblem += max_residual >= abs_vars[atom_index_internal]
 
-        #enforcing the existing constraints on the system
+        # enforcing the existing constraints on the system
 
         # daisy chaining the equivalence (symmetry) groups
         for group_name, pairs in self._flat_symmetry_constraints.items():
@@ -268,9 +405,13 @@ class MoleculeFieldFitter:
 
         # slice notation means this line will throw an error if vectors are incorrectly sized
         # as it will attempt to broadcast the values rather than overwrite the variable
-        self._solution_round[:] = np.array([pulp.value(a) for a in atoms_vars.values()]).reshape(-1, 1)*10**-round_places
+        self._solution_round[:] = np.array([pulp.value(a) for a in atoms_vars.values()]).reshape(-1,
+                                                                                                 1) * 10 ** -round_places
 
     def transfer_partial_charges(self):
+        """
+        Function to transfer the calculated partial charges into the Molecule3D partial charge property
+        """
         if self._status != 1:
             print('system not yet fitted')
             raise Exception  # todo make a new exception
@@ -279,4 +420,3 @@ class MoleculeFieldFitter:
             for atom_internal_index in range(molecule.num_atoms):
                 molecule.atom_objects[atom_internal_index].partial_charge = \
                     self._solution[self._index_lookup[molecule, atom_internal_index]][0]
-

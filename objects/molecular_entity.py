@@ -3,7 +3,6 @@ import sys
 import networkx as nx
 import numpy as np
 from numpy.linalg import inv
-from scipy.spatial import distance_matrix
 import pulp
 
 try:
@@ -71,21 +70,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
     def rmsdFit(self):
         return
 
-    def lsqComponents(self):
-        # these setups are used for both solving methods
-
-        # default load units are bohrs
-
-        # currently unknown units of the surface
-        # want rows to correspond to every atom for each grid point
-
-        # assumes a.u.
-        distance_pairs = distance_matrix(self._esp_grid_coords, self.atom_coord_matrix)
-        # atom coords read in as BOHR, might just convert this to Metres
-        A = 1 / distance_pairs  # don't need constant in a.u.
-        b = self._esp_grid_charge.reshape(-1, 1)  # turn 1d array into n arrays with 1 element each
-        return A, b
-
     def gurobiPartialChargeFit(self,
                                round_charge: bool = False,
                                round_places: int = 3,
@@ -151,34 +135,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         }
 
         return results
-
-    def lsqPartialChargeFit(self,
-                            total_charge: int = 0
-                            ):
-
-        A, b = self.lsqComponents()
-
-        A_star = np.zeros((self.num_atoms + 1, self.num_atoms + 1))  # each atom + one constraint
-        # assuming units of esp surface are kj*bohr/q
-        b_star = np.zeros((self.num_atoms + 1, 1))
-        b_star[:-1] = A.T @ b
-        b_star[-1] = total_charge
-
-        A_star[:self.num_atoms, :self.num_atoms] = A.T @ A
-
-        ## setting up total charge constraint
-        C = np.ones(self.num_atoms)
-        A_star[-1, :-1] = C
-        A_star[:-1, -1] = C.T
-
-        # q = inv(A.T @ A) @ A.T @ b
-        q = inv(A_star) @ b_star
-
-        return {
-            'A_star': A_star,
-            'b_star': b_star,
-            'q_star': q  # this vector also has the Lagrangian's
-        }
 
     def setPartialCharges(self, charges: dict, index_type='name'):
         for atom_id, value in charges.items():
