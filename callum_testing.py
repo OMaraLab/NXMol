@@ -1,7 +1,7 @@
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.parsing.input_parsers import GAMESS_to_Molecule3D
 from chemistry_data_structure.helpers.field_fitting import MoleculeFieldFitter,\
-    lsq_partial_charge_fit, _gurobi_charge_fit, _gurobi_post_hoc_round, _pulp_post_hoc_round
+    lsq_partial_charge_fit, _gurobi_charge_fit, _gurobi_post_hoc_round, _pulp_post_hoc_round, post_hoc_charge_round
 
 # from esp_analysis.ff_output_analysis import
 
@@ -26,13 +26,21 @@ m = molecules[0]
 #                                                 'charge': 0.0}
 #                                            })
 # print('###all molecules raw fit###')
-_gurobi_charge_fit(molecules, verbose=True)
+# _gurobi_charge_fit(molecules, verbose=True)
+lsq_partial_charge_fit(m, 0)
 asd = [round(a.partial_charge,5) for a in m.atom_objects]
 print('###\n\nROUNDING\n\n###')
 # _gurobi_post_hoc_round(molecules, verbose=True, round_places=3)
-_pulp_post_hoc_round(molecules, verbose=True, round_places=3)
-print([a.partial_charge for a in m.atom_objects])
-print(asd)
+post_hoc_charge_round([m], verbose=True,
+                     round_places=3,
+                     flat_sum_constraints = {'tot_charge':
+                                                 {'pairs':tuple((m, atom_obj) for atom_obj in m.atom_objects),
+                                                                     'charge': 0.0}
+                                                                },
+                      engine='pulp')
+asd2 = [a.partial_charge for a in m.atom_objects]
+print(asd2, sum(asd2))
+print(asd, sum(asd2))
 # print('###all molecules total charge###')
 # _gurobi_charge_fit(molecules, verbose=True,
 #                    flat_sum_constraints={f'tot_charge{jj}':
@@ -55,36 +63,22 @@ print(asd)
 # self.transfer_partial_charges()
 # self.round_post_hoc()
 
-xxxx
-import sys
-import os
+
+# import sys
+# import os
 
 
 
-import cProfile
-import pstats
-from random import randint, seed
-self = molecules[0]
-index_type = 'index'
-seed(0)
-profiler = cProfile.Profile()
-profiler.enable()
-for i in range(10000):
-    index = [randint(1,7) for i in range(10)]
-    [next((d for d in self._graph._node.values() if d[index_type] == i), None)
-     for i in index]
+# import cProfile
+# import pstats
+# from random import randint, seed
+# self = molecules[0]
+# index_type = 'index'
+# seed(0)
+# profiler = cProfile.Profile()
+# profiler.enable()
+#
+# profiler.disable()
+# stats = pstats.Stats(profiler).sort_stats('cumtime')
+# stats.print_stats()
 
-profiler.disable()
-stats = pstats.Stats(profiler).sort_stats('cumtime')
-stats.print_stats()
-print('Beginning old list version')
-seed(0)
-profiler = cProfile.Profile()
-profiler.enable()
-for i in range(10000):
-    index = [randint(1,7) for i in range(10)]
-    [[a for a in self._graph._node.values() if a._index[index_type]==i][0] for i in index]
-
-profiler.disable()
-stats = pstats.Stats(profiler).sort_stats('cumtime')
-stats.print_stats()

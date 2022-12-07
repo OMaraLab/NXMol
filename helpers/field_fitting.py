@@ -26,6 +26,11 @@ from chemistry_data_structure.objects.atom_bond import Atom3D
 SYMMETRY_TYPING = Union[list[dict[Any, list[Any]]], dict[Any, dict[Any, list[Any]]]]
 SUM_TYPING = Any  # todo this is a bit of a mess, will work out later
 FLAT_SYMMETRY = dict[str, list[tuple[Molecule3D, Atom3D]]]
+FLAT_SUM = dict[str,
+                dict[str,
+                     Union[tuple[tuple[Molecule3D, Any], ...], float]
+                ]
+]
 
 
 def _lsq_components(molecule: Molecule3D):
@@ -95,7 +100,7 @@ def _generate_lsq_matrices(molecules: list[Molecule3D]):
 
 def _generate_constraint_matrices(index_lookup: dict,
                                   flat_symmetry_constraints: FLAT_SYMMETRY = None,
-                                  flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None
+                                  flat_sum_constraints: FLAT_SUM = None
                                   ) -> Union[np.array, np.array]:
     """
     Internal method for setting up the constraint matrices
@@ -175,8 +180,8 @@ def _generate_transformed_lsq(coeff_matrix: np.array,
 
 
 def _lsq_charge_fit(molecules: list[Molecule3D],
-                    flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
-                    flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None
+                    flat_symmetry_constraints: FLAT_SYMMETRY = None,
+                    flat_sum_constraints: FLAT_SUM = None
                     ) -> np.array:
     """
     Internal function for performing the fitting process and setting up the constraint matrices based off the molecules
@@ -254,7 +259,7 @@ def flatten_sum(molecules: list[Molecule3D],
                 sum_groups: SUM_TYPING,
                 index_type: str = 'name',
                 molecule_map: Optional[dict[Any, Molecule3D]] = None
-                ) -> dict[Any, dict[str, Union[tuple[tuple[Molecule3D, Any], ...], Any]]]:
+                ) -> FLAT_SUM:
     """
     Function to flatten sum constraints of any typical format into named lists of molecule, atom pairs
     Useful for checking information later
@@ -323,7 +328,7 @@ def _gurobi_attach_constraints(model: 'gp.Model',
                                atom_vars: dict,
                                sum_target_scale: float = 1.0,
                                flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
-                               flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None
+                               flat_sum_constraints: FLAT_SUM = None
                                ) -> tuple[dict, dict]:
     """
     Internal method for attaching the symmetry and sum constraints into a gurobi model for charge fitting
@@ -406,7 +411,7 @@ def _gurobi_init_variables(molecules: list[Molecule3D],
 
 def _gurobi_charge_fit(molecules: list[Molecule3D],
                        flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
-                       flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None,
+                       flat_sum_constraints: FLAT_SUM = None,
                        verbose: bool = False,
                        round_places: Optional[int] = None
                        ):
@@ -452,7 +457,7 @@ def _gurobi_charge_fit(molecules: list[Molecule3D],
 
 def _gurobi_post_hoc_round(molecules: list[Molecule3D],
                            flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
-                           flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None,
+                           flat_sum_constraints: FLAT_SUM = None,
                            verbose: bool = False,
                            round_places: int = 3
                            ) -> None:
@@ -511,7 +516,7 @@ def _gurobi_post_hoc_round(molecules: list[Molecule3D],
 
 def _pulp_post_hoc_round(molecules: list[Molecule3D],
                          flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
-                         flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None,
+                         flat_sum_constraints: FLAT_SUM = None,
                          verbose: bool = False,
                          round_places: int = 3,
                          timeout: int = 60 * 5
@@ -519,6 +524,12 @@ def _pulp_post_hoc_round(molecules: list[Molecule3D],
     """
     Perform post hoc rounding with the pulp library
     """
+
+    if flat_symmetry_constraints is None:
+        flat_symmetry_constraints = {}
+    if flat_sum_constraints is None:
+        flat_sum_constraints = {}
+
     roundProblem = pulp.LpProblem('RoundingProblem', pulp.LpMinimize)
 
     index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
@@ -535,19 +546,30 @@ def _pulp_post_hoc_round(molecules: list[Molecule3D],
     # set up variables to represent the absolute value of the difference
     for molecule_atom_pair in index_lookup.keys():
         # absolute values for the objective function
-        # atoms_vars[a['unique']].setInitialValue(int(a['fit_result']['charge'][0]*10**round_places))
         roundProblem += abs_vars[molecule_atom_pair] >= (
                 atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places)
         roundProblem += abs_vars[molecule_atom_pair] >= -(
                 atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places)
-        # all atoms in group have same charge
-        # need the length, i.e. if there are 3 atoms in the group the residual total is actually 3 times that
-        # constrain the maximum value (although this hopefully shouldn't matter
-        # roundProblem += atoms_vars[a['unique']] <= (10**round_places - 1) # e.g. want to round to 4 decimal places gives max value of 9999
 
-        # for Objective, minimise the maximum deviation
         roundProblem += max_abs >= abs_vars[molecule_atom_pair]
 
+    # set up constraints that are loaded with the system
+    # currently not implemented a way of exporting the constraints to dict
+
+    # iterate through these pairs to utilise the column location lookup
+    # assign the appropriate coefficients using the daisy chain approach
+    for group_name, flattened_group in flat_symmetry_constraints.items():
+        for mol_atom_pair_1, mol_atom_pair_2 in zip(flattened_group[:-1], flattened_group[1:]):
+            roundProblem += atom_vars[mol_atom_pair_1] == atoms_vars[mol_atom_pair_2]
+
+    # iterate over the sum constraints, using similar methods for looking up indices
+    for group_name, flattened_group in flat_sum_constraints.items():
+        # SYMMETRY GROUPS HAVE DIFFERENT STRUCTURE
+        # need to multiply the total charge value to match the new units of the rounded variables
+        roundProblem += (sum(atoms_vars[mol_atom_pair] for mol_atom_pair in flattened_group['pairs'])
+                         == flattened_group['charge'] * 10 ** float(round_places))
+
+    # for Objective, minimise the maximum deviation
     roundProblem += max_abs
 
     # print(roundProblem)
@@ -567,6 +589,37 @@ def _pulp_post_hoc_round(molecules: list[Molecule3D],
     # return np.array([pulp.value(x) for x in atoms_vars.values()]).reshape(-1, 1) / float(10 ** round_places)
     for key in index_lookup.keys():
         key[1].partial_charge = pulp.value(atoms_vars[key]) * 10 ** - round_places
+    return
+
+
+def post_hoc_charge_round(molecules: list[Molecule3D],
+                          round_places: int = 3,
+                          flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+                          flat_sum_constraints: FLAT_SUM = None,
+                          verbose: bool = False,
+                          timeout: int = 60 * 5,
+                          engine='pulp'
+                          ):
+    if engine == 'pulp':
+        # todo specify molecule=molecule instead of the implicit arguments
+        _pulp_post_hoc_round(molecules,
+                             flat_symmetry_constraints,
+                             flat_sum_constraints,
+                             verbose,
+                             round_places,
+                             timeout
+                             )
+    elif engine == 'gurobi':
+        _gurobi_post_hoc_round(molecules,
+                               flat_symmetry_constraints,
+                               flat_sum_constraints,
+                               verbose,
+                               round_places
+                               )
+    else:
+        raise ValueError(f'Unknown engine {engine}, options are "gurobi" or "pulp"')
+    return
+
 
 class MoleculeFieldFitter:
     def __init__(self,
