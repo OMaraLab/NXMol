@@ -14,6 +14,7 @@ from chemistry_data_structure.objects.atom_bond import Atom3D
 # unions allow the constraints to be named or not when creating them
 SYMMETRY_TYPING = Union[list[dict[Any, list[Any]]], dict[Any, dict[Any, list[Any]]]]
 SUM_TYPING = Any  # todo this is a bit of a mess, will work out later
+FLAT_SYMMETRY = dict[str, list[tuple[Molecule3D, Atom3D]]]
 
 
 # todo: maybe use the actual atom objects as keys for the dictionary rather than the internal atom indexes
@@ -32,17 +33,6 @@ def _lsq_components(molecule: Molecule3D):
     A = 1 / distance_pairs  # don't need constant in a.u.
     b = molecule._esp_grid_charge.reshape(-1, 1)  # turn 1d array into n arrays with 1 element each
     return A, b
-
-
-def _lsq_charge_fit(molecules: list[Molecule3D],
-                    flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
-                    flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None) -> np.array:
-    """
-    Internal function for performing the fitting process and setting up the constraint matrices based off the molecules
-    And the preprocessed constraint information
-    """
-
-    return
 
 
 def _generate_lsq_matrices(molecules: list[Molecule3D]):
@@ -94,11 +84,77 @@ def _generate_lsq_matrices(molecules: list[Molecule3D]):
     return index_lookup, index_backlookup, coeff_matrix, esp_vector
 
 
+def _generate_constraint_matrices(index_lookup: dict,
+                                  flat_symmetry_constraints: FLAT_SYMMETRY = None,
+                                  flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None
+                                  ) -> Union[np.array, np.array]:
+    """
+    Internal method for setting up the constraint matrices
+    # todo might merge with _generate_lsq_matrices of they see no separate use
+    """
+
+    # number of atoms involved in symmetry constraints
+    num_symmetry_atoms = sum(
+        sum(len(atom_list) for atom_list in group_dict.values())
+        for group_dict in symmetry_constraints.values()
+    )
+
+    num_constraints = len(sum_constraints) + num_symmetry_atoms - len(symmetry_constraints)
+
+    # need one row for every constraint and one row for every atom
+    constraint_matrix = np.zeros((num_constraints, num_atoms))
+    constraint_target = np.zeros((self._num_constraints, 1))
+
+    constraint_iter = 0
+    for group_name, flattened_group in flat_symmetry_constraints.items():
+
+        # iterate through these pairs to utilise the column location lookup
+        # assign the appropriate coefficients using the daisy chain approach
+        for mol_atom_pair_1, mol_atom_pair_2 in zip(flattened_group[:-1], flattened_group[1:]):
+            constraint_matrix[constraint_iter,
+                              index_lookup[mol_atom_pair_1]] = 1.0
+            constraint_matrix[constraint_iter,
+                              index_lookup[mol_atom_pair_2]] = -1.0
+
+            constraint_iter += 1
+
+    # iterate over the sum constraints, using similar methods for looking up indices
+    for group_name, flattened_group in flat_sum_constraints.items():
+        # SYMMETRY GROUPS HAVE DIFFERENT STRUCTURE
+
+        for mol_atom_pair in flattened_group['pairs']:
+            self._constraint_matrix[constraint_iter, self._index_lookup[mol_atom_pair]] = 1.0
+        constraint_target[constraint_iter] = flattened_group['charge']
+        constraint_iter += 1
+
+    return constraint_matrix, constraint_target
+
+
+def _lsq_charge_fit(molecules: list[Molecule3D],
+                    flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+                    flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None) -> np.array:
+    """
+    Internal function for performing the fitting process and setting up the constraint matrices based off the molecules
+    And the preprocessed constraint information
+    """
+    index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
+
+    # q = inv(A.T @ A) @ A.T @ b
+    # q = inv(A_star) @ b_star
+    q = lstsq(A_star, b_star, rcond=None)
+
+    return {
+        'A_star': A_star,
+        'b_star': b_star,
+        'q_star': q  # this vector also has the Lagrangian's
+    }
+
+
 def flatten_symmetry(molecules: list[Molecule3D],
                      symmetry_groups: SYMMETRY_TYPING,
                      index_type: str = 'name',
                      molecule_map: Optional[dict[Any, Molecule3D]] = None
-                     ) -> dict[Any, list[tuple[Molecule3D, Atom3D]]]:
+                     ) -> FLAT_SYMMETRY:
     """
     Function for flattening symmetry constraints of a typical format into a flattened format that uses object references
     Can convert from most predictable numbering schemes/id schemes, as long as they are attached to the molecule objects
@@ -137,7 +193,7 @@ def flatten_sum(molecules: list[Molecule3D],
                 sum_groups: SUM_TYPING,
                 index_type: str = 'name',
                 molecule_map: Optional[dict[Any, Molecule3D]] = None
-                ) -> dict[Any, list[tuple[tuple[Molecule3D, Atom3D], float]]]:
+                ) -> dict[Any, dict[str, Union[tuple[tuple[Molecule3D, Any], ...], Any]]]:
     """
     Function to flatten sum constraints of any typical format into named lists of molecule, atom pairs
     Useful for checking information later
@@ -159,12 +215,13 @@ def flatten_sum(molecules: list[Molecule3D],
 
     # pair the lookup with the value of interest
     for group_name, group_dict in sum_groups.items():
-        flattened_group = {
-            (molecule_map[molecule_id],
-             molecule_map[molecule_id].get_atom(atom_index, index_type=index_type)
-             ): group_dict[1]
-            for molecule_id, atom_list in group_dict[0].items()
-            for atom_index in atom_list}
+        flattened_group = {'pairs':
+                               tuple((molecule_map[molecule_id],
+                                      molecule_map[molecule_id].get_atom(atom_index, index_type=index_type))
+                                     for molecule_id, atom_list in group_dict[0].items()
+                                     for atom_index in atom_list),
+                           'charge': group_dict[1]
+                           }
         flat_sum_constraints[group_name] = flattened_group
 
     return flat_sum_constraints
@@ -173,31 +230,14 @@ def flatten_sum(molecules: list[Molecule3D],
 def lsq_partial_charge_fit(molecule: Molecule3D,
                            symmetry_constraints=None,
                            sum_constraints=None,
+                           total_charge_constraint=True,
                            ):
-    A, b = _lsq_components(molecule)
+    """
+    Fitting partial charges to single molecule
+    Force the flattening as the functions exist to do it now
+    """
 
-    A_star = np.zeros((molecule.num_atoms + 1, molecule.num_atoms + 1))  # each atom + one constraint
-    # assuming units of esp surface are kj*bohr/q
-    b_star = np.zeros((molecule.num_atoms + 1, 1))
-    b_star[:-1] = A.T @ b
-    b_star[-1] = total_charge
-
-    A_star[:molecule.num_atoms, :molecule.num_atoms] = A.T @ A
-
-    ## setting up total charge constraint
-    C = np.ones(molecule.num_atoms)
-    A_star[-1, :-1] = C
-    A_star[:-1, -1] = C.T
-
-    # q = inv(A.T @ A) @ A.T @ b
-    # q = inv(A_star) @ b_star
-    q = lstsq(A_star, b_star, rcond=None)
-
-    return {
-        'A_star': A_star,
-        'b_star': b_star,
-        'q_star': q  # this vector also has the Lagrangian's
-    }
+    return
 
 
 class MoleculeFieldFitter:
