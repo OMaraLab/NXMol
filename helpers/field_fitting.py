@@ -7,7 +7,14 @@ from numpy.linalg import lstsq
 import pulp  # todo might set this as optional dependency
 from scipy.spatial import distance_matrix
 from typing import Optional, Any, Union
+import sys
 import warnings
+
+try:
+    import gurobipy as gp
+    from gurobipy import GRB
+except ModuleNotFoundError:
+    pass
 
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.objects.atom_bond import Atom3D
@@ -299,7 +306,7 @@ def lsq_partial_charge_fit(molecule: Molecule3D,
         sum_constraints['total_charge'] = {'pairs':
             tuple(
                 (molecule, atom_obj) for atom_obj in molecule.atom_objects
-                  ),
+            ),
             'charge': total_charge_constraint
         }
 
@@ -309,6 +316,109 @@ def lsq_partial_charge_fit(molecule: Molecule3D,
     # assign the partial charges directly to the atoms
 
     return solution
+
+
+def _gurobi_attach_constraints(model: 'gp.Model',
+                               atom_vars: dict,
+                               sum_target_scale: float = 1.0,
+                               flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+                               flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None
+                               ) -> tuple[dict, dict]:
+    """
+    Internal method for attaching the symmetry and sum constraints into a gurobi model for charge fitting
+    """
+    if 'gurobipy' not in sys.modules:
+        raise ModuleNotFoundError('gurobipy not imported')
+
+    if flat_symmetry_constraints is None:
+        flat_symmetry_constraints = {}
+    if flat_sum_constraints is None:
+        flat_sum_constraints = {}
+
+    gb_symmetry_constraints = {}
+
+    # iterate through these pairs to utilise the column location lookup
+    # assign the appropriate coefficients using the daisy chain approach
+    for group_name, flattened_group in flat_symmetry_constraints.items():
+        gb_symmetry_constraints[group_name] = tuple(
+            model.addConstr(atom_vars[mol_atom_pair_1] == atom_vars[mol_atom_pair_2])
+            for mol_atom_pair_1, mol_atom_pair_2
+            in zip(flattened_group[:-1], flattened_group[1:])
+        )
+
+    gb_sum_constraints = {}
+    # iterate over the sum constraints, using similar methods for looking up indices
+    for group_name, flattened_group in flat_sum_constraints.items():
+        # SYMMETRY GROUPS HAVE DIFFERENT STRUCTURE
+        gb_sum_constraints[group_name] = model.addConstr(
+            gp.quicksum(atom_vars[mol_atom_pair]
+                        for mol_atom_pair in flattened_group['pairs'])
+            == flattened_group['charge'] * sum_target_scale
+        )
+
+    # return the lookups for the gurobi constraints based off the constraint names
+    return gb_symmetry_constraints, gb_sum_constraints
+
+
+def _gurobi_charge_fit(molecules: list[Molecule3D],
+                       flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+                       flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None,
+                       verbose: bool = False,
+                       round_places: Optional[int] = None
+                       ):
+    """
+    Internal method for using gurobi to assign atomic partial charges
+    """
+    env = gp.Env(empty=True)
+    env.setParam("OutputFlag", verbose)
+    env.start()
+    model = gp.Model(env=env)
+
+    index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
+
+    if round_places is not None:
+        # effectively sets upper and lower bounds of the charges as 1,-1
+        atoms_vars = model.addVars(
+            index_lookup.keys(),
+            vtype=GRB.INTEGER,
+            lb=-(10 ** round_places - 1),
+            ub=(10 ** round_places - 1)
+        )
+
+        atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1) / 10 ** float(round_places)
+
+    else:
+
+        atoms_vars = model.addVars(
+            index_lookup.keys(),
+            vtype=GRB.CONTINUOUS,
+            lb=-1.0,
+            ub=1.0)
+
+        atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)
+
+    _gurobi_attach_constraints(
+        model,
+        atoms_vars,
+        10 ** float(round_places) if round_places is not None else 1.0,
+        flat_symmetry_constraints,
+        flat_sum_constraints
+    )
+    Q = coeff_matrix.T @ coeff_matrix
+    c = -2 * esp_vector.T @ coeff_matrix
+    obj = atoms_vars_array.T @ Q @ atoms_vars_array + c @ atoms_vars_array + esp_vector.T @ esp_vector
+
+    # gurobi can solve quadratic expressions
+    model.setObjective(obj.sum())
+    # this gives exact same result as lsq
+
+    model.optimize()
+    if round_places is not None:
+        q = np.vectorize(lambda var: var.getValue())(atoms_vars_array)
+    else:
+        q = np.vectorize(lambda var: var.x)(atoms_vars_array)
+
+    return q
 
 
 class MoleculeFieldFitter:
