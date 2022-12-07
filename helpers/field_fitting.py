@@ -7,6 +7,7 @@ from numpy.linalg import lstsq
 import pulp  # todo might set this as optional dependency
 from scipy.spatial import distance_matrix
 from typing import Optional, Any, Union
+import warnings
 
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.objects.atom_bond import Atom3D
@@ -41,7 +42,7 @@ def _generate_lsq_matrices(molecules: list[Molecule3D]):
     also works for a single molecule
     """
     # separate out the individual esp and coefficient matrix data
-    single_coeffs, single_esps = zip(*[molecule.lsqComponents() for molecule in molecules])
+    single_coeffs, single_esps = zip(*[_lsq_components(molecule) for molecule in molecules])
     index_lookup = {}
     index_backlookup = {}
 
@@ -93,17 +94,24 @@ def _generate_constraint_matrices(index_lookup: dict,
     # todo might merge with _generate_lsq_matrices if they see no separate use
     """
 
+    if flat_symmetry_constraints is None:
+        flat_symmetry_constraints = {}
+    if flat_sum_constraints is None:
+        flat_sum_constraints = {}
+
     # number of atoms involved in symmetry constraints
     num_symmetry_atoms = sum(
-        sum(len(atom_list) for atom_list in group_dict.values())
-        for group_dict in symmetry_constraints.values()
+        sum(len(pairs) for pairs in group_dict['pairs'])
+        for group_dict in flat_symmetry_constraints.values()
     )
 
-    num_constraints = len(sum_constraints) + num_symmetry_atoms - len(symmetry_constraints)
+    num_atoms = len(index_lookup)
+
+    num_constraints = len(flat_sum_constraints) + num_symmetry_atoms - len(flat_symmetry_constraints)
 
     # need one row for every constraint and one row for every atom
     constraint_matrix = np.zeros((num_constraints, num_atoms))
-    constraint_target = np.zeros((self._num_constraints, 1))
+    constraint_target = np.zeros((num_constraints, 1))
 
     constraint_iter = 0
     for group_name, flattened_group in flat_symmetry_constraints.items():
@@ -123,7 +131,7 @@ def _generate_constraint_matrices(index_lookup: dict,
         # SYMMETRY GROUPS HAVE DIFFERENT STRUCTURE
 
         for mol_atom_pair in flattened_group['pairs']:
-            self._constraint_matrix[constraint_iter, self._index_lookup[mol_atom_pair]] = 1.0
+            constraint_matrix[constraint_iter, index_lookup[mol_atom_pair]] = 1.0
         constraint_target[constraint_iter] = flattened_group['charge']
         constraint_iter += 1
 
@@ -146,14 +154,14 @@ def _generate_transformed_lsq(coeff_matrix: np.array,
     transformed_coeff_matrix = np.zeros(
         (num_constraints + num_atoms, num_constraints + num_atoms)
     )
-    transformed_coeff_matrix[:self.num_atoms, :self.num_atoms] = coeff_matrix.T @ coeff_matrix
-    transformed_coeff_matrix[self.num_atoms:, :self.num_atoms] = constraint_matrix
-    transformed_coeff_matrix[:self.num_atoms, self.num_atoms:] = constraint_matrix.T
+    transformed_coeff_matrix[:num_atoms, :num_atoms] = coeff_matrix.T @ coeff_matrix
+    transformed_coeff_matrix[num_atoms:, :num_atoms] = constraint_matrix
+    transformed_coeff_matrix[:num_atoms, num_atoms:] = constraint_matrix.T
 
     # setting up the new target vector
-    transformed_target = np.zeros((self.num_atoms + num_constraints, 1))
-    transformed_target[:self.num_atoms] = coeff_matrix.T @ esp_vector
-    transformed_target[self.num_atoms:] = constraint_target
+    transformed_target = np.zeros((num_atoms + num_constraints, 1))
+    transformed_target[:num_atoms] = coeff_matrix.T @ esp_vector
+    transformed_target[num_atoms:] = constraint_target
 
     return transformed_coeff_matrix, transformed_target
 
@@ -168,6 +176,12 @@ def _lsq_charge_fit(molecules: list[Molecule3D],
     """
     # todo, need to decide if want to switch between assigning partial charges directly, or having the option to
     #  output as a dictionary lookup
+
+    if flat_symmetry_constraints is None:
+        flat_symmetry_constraints = {}
+    if flat_sum_constraints is None:
+        flat_sum_constraints = {}
+
     index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
     constraint_matrix, constraint_target = _generate_constraint_matrices(index_lookup,
                                                                          flat_symmetry_constraints,
@@ -177,12 +191,14 @@ def _lsq_charge_fit(molecules: list[Molecule3D],
                                                                              constraint_matrix,
                                                                              constraint_target)
     solution, residuals, rank, singular_values = lstsq(transformed_coeff_matrix,
-                                                                   transformed_target,
+                                                       transformed_target,
                                                        rcond=None)
 
     # assign the partial charges directly to the atoms
-    # for atom_iter, charge in enumerate(solution.T[0]):
-    #     index_backlookup[atom_iter][1].partial_charge = charge
+    # the solution also contains the Lagrangian's here, so need to only iterate through the first part containing
+    # ch
+    for atom_iter, charge in enumerate(solution[:len(index_lookup)].T[0]):
+        index_backlookup[atom_iter][1].partial_charge = charge
 
     return solution, residuals, rank, singular_values
 
@@ -265,16 +281,34 @@ def flatten_sum(molecules: list[Molecule3D],
 
 
 def lsq_partial_charge_fit(molecule: Molecule3D,
+                           total_charge_constraint: Union[int, None],
                            symmetry_constraints=None,
                            sum_constraints=None,
-                           total_charge_constraint=True,
                            ):
     """
     Fitting partial charges to single molecule
     Force the flattening as the functions exist to do it now
     """
+    # if total_charge_constraint and sum_constraints:
+    #     warnings.warn("Warning, sum constraints have been provided and total_charge_constraint is set to True. "
+    #                   "To suppress this warning incorporate the total charge constraints into sum_constraints")
 
-    return
+    if total_charge_constraint is not None:
+        if sum_constraints is None:
+            sum_constraints = {}
+        sum_constraints['total_charge'] = {'pairs':
+            tuple(
+                (molecule, atom_obj) for atom_obj in molecule.atom_objects
+                  ),
+            'charge': total_charge_constraint
+        }
+
+    solution, residuals, rank, singular_values = _lsq_charge_fit([molecule],
+                                                                 symmetry_constraints,
+                                                                 sum_constraints)
+    # assign the partial charges directly to the atoms
+
+    return solution
 
 
 class MoleculeFieldFitter:
