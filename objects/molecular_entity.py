@@ -1,9 +1,6 @@
-import sys
-
 import networkx as nx
 import numpy as np
-from numpy.linalg import inv
-import pulp
+from scipy.spatial import distance_matrix
 
 try:
     import gurobipy as gp
@@ -70,7 +67,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
     def rmsdFit(self):
         return
 
-
     def setPartialCharges(self, charges: dict, index_type='name'):
         for atom_id, value in charges.items():
             self.get_atom(atom_id, index_type=index_type).partial_charge = value
@@ -82,81 +78,13 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                      zip(self.atoms, self.partialChargeFit(solver=solver, round_charge=round_charge, **kwargs))}
         )
 
-    def partialChargeFit(self, solver='lsq',
-                         round_charge=False,
-                         total_charge: int = 0,
-                         round_places: int = 3,
-                         timeout: int = 60 * 5,
-                         minmax: bool = False,
-                         verbose: bool = False):
-        if self._esp_grid_charge is None or self._esp_grid_coords is None:
-            raise AttributeError('No esp grid found')
-
-        if solver == 'lsq':
-            q = self.lsqPartialChargeFit(
-                total_charge=total_charge,
-            )['q_star']
-            if not round_charge:
-                return q[:-1]
-            else:
-                roundProblem = pulp.LpProblem('RoundingProblem', pulp.LpMinimize)
-                atom_names = [a for a in self.atoms]
-
-                atoms_vars = pulp.LpVariable.dicts('', range(len(atom_names)), lowBound=-(10 ** round_places - 1),
-                                                   upBound=(10 ** round_places - 1), cat='Integer')
-                abs_vars = pulp.LpVariable.dicts('abs', range(len(atom_names)), lowBound=0)
-                if minmax:
-                    max_residual = pulp.LpVariable('max_charge', lowBound=0)
-
-                # set up variables to represent the absolute value of the difference
-                for a in range(self.num_atoms):
-                    # absolute values for the objective function
-                    # atoms_vars[a['unique']].setInitialValue(int(a['fit_result']['charge'][0]*10**round_places))
-                    roundProblem += abs_vars[a] >= (
-                            atoms_vars[a] - q[a][0] * 10 ** round_places)
-                    roundProblem += abs_vars[a] >= -(
-                            atoms_vars[a] - q[a][0] * 10 ** round_places)
-                    # all atoms in group have same charge
-                    # need the length, i.e. if there are 3 atoms in the group the residual total is actually 3 times that
-                    # constrain the maximum value (although this hopefully shouldn't matter
-                    # roundProblem += atoms_vars[a['unique']] <= (10**round_places - 1) # e.g. want to round to 4 decimal places gives max value of 9999
-                    if minmax:
-                        # for Objective, minimise the maximum deviation
-                        roundProblem += max_residual >= abs_vars[a]
-
-                roundProblem += sum(atoms_vars.values()) == total_charge
-
-                if minmax:
-                    # minimise the maxiumum residual
-                    roundProblem += max_residual
-                else:
-                    # minimise sum of the residuals
-                    roundProblem += sum(abs_vars.values())
-
-                # print(roundProblem)
-                if timeout:
-                    status = roundProblem.solve(solver=pulp.apis.PULP_CBC_CMD(
-                        timeLimit=timeout,
-                        threads=4,
-                        timeMode="cpu",
-                        msg=verbose))
-                else:
-                    status = roundProblem.solve(
-                        solver=pulp.apis.PULP_CBC_CMD(threads=4,
-                                                      timeMode="cpu",
-                                                      msg=verbose)
-                    )  # Solver
-                return np.array([pulp.value(x) for x in atoms_vars.values()]).reshape(-1, 1) / float(10 ** round_places)
-
-        elif solver == 'gurobi':
-            return self.gurobiPartialChargeFit(round_charge=round_charge,
-                                               total_charge=total_charge,
-                                               verbose=verbose)['q']
-
     def partialChargeRMSD(self) -> float:
-        A, b = self.lsqComponents()
-        partialChargeVector = np.array([a.partial_charge for a in self.atom_objects]).reshape(-1,1)
-        return np.sqrt(1/self.num_atoms * sum((A @ partialChargeVector - b)**2))
+        distance_pairs = distance_matrix(self._esp_grid_coords, self.atom_coord_matrix)
+        # atom coords read in as BOHR, might just convert this to Metres
+        A = 1 / distance_pairs  # don't need constant in a.u.
+        b = molecule._esp_grid_charge.reshape(-1, 1)
+        partialChargeVector = np.array([a.partial_charge for a in self.atom_objects]).reshape(-1, 1)
+        return np.sqrt(1 / self.num_atoms * sum((A @ partialChargeVector - b) ** 2))
 
     def writePDB(self):
         return
