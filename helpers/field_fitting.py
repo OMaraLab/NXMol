@@ -47,6 +47,7 @@ def _lsq_charge_fit(molecules: list[Molecule3D],
 
 def _generate_lsq_matrices(molecules: list[Molecule3D]):
     """
+    Method for generating the internal coefficient matrices, and the index lookups capable of tracking the rows/columns
     also works for a single molecule
     """
     # separate out the individual esp and coefficient matrix data
@@ -100,7 +101,10 @@ def flatten_symmetry(molecules: list[Molecule3D],
                      ) -> dict[Any, list[tuple[Molecule3D, Atom3D]]]:
     """
     Function for flattening symmetry constraints of a typical format into a flattened format that uses object references
+    Can convert from most predictable numbering schemes/id schemes, as long as they are attached to the molecule objects
     """
+
+    # assume the objects are being used as keys
     if molecule_map is None:
         molecule_map = {molecule: molecule for molecule in molecules}
 
@@ -109,7 +113,7 @@ def flatten_symmetry(molecules: list[Molecule3D],
     if type(symmetry_groups) == dict:
         pass
     else:
-        # assume it is iterable and generate some names
+        # if the groups aren't named, generate internal names
         symmetry_groups = {
             f'sym_{jj}': group for jj, group in enumerate(symmetry_groups)
         }
@@ -138,6 +142,8 @@ def flatten_sum(molecules: list[Molecule3D],
     Function to flatten sum constraints of any typical format into named lists of molecule, atom pairs
     Useful for checking information later
     """
+
+    # assume the objects are being used as keys
     if molecule_map is None:
         molecule_map = {molecule: molecule for molecule in molecules}
 
@@ -146,18 +152,19 @@ def flatten_sum(molecules: list[Molecule3D],
     if type(flat_sum_constraints) == dict:
         pass
     else:
-        # assume it is iterable and generate some names
+        # if the groups aren't named, generate internal names
         sum_groups = {
             f'sum_{jj}': group for jj, group in enumerate(sum_groups)
         }
 
+    # pair the lookup with the value of interest
     for group_name, group_dict in sum_groups.items():
-        flattened_group = [
-            ((molecule_map[molecule_id],
-              molecule_map[molecule_id].get_atom(atom_index, index_type=index_type)),
-             group_dict[1])
+        flattened_group = {
+            (molecule_map[molecule_id],
+             molecule_map[molecule_id].get_atom(atom_index, index_type=index_type)
+             ): group_dict[1]
             for molecule_id, atom_list in group_dict[0].items()
-            for atom_index in atom_list]
+            for atom_index in atom_list}
         flat_sum_constraints[group_name] = flattened_group
 
     return flat_sum_constraints
