@@ -1,7 +1,7 @@
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.parsing.input_parsers import GAMESS_to_Molecule3D
 from chemistry_data_structure.helpers.field_fitting import MoleculeFieldFitter,\
-    lsq_partial_charge_fit, _gurobi_charge_fit, _gurobi_post_hoc_round
+    lsq_partial_charge_fit, _gurobi_charge_fit, _gurobi_post_hoc_round, _pulp_post_hoc_round
 
 # from esp_analysis.ff_output_analysis import
 
@@ -27,9 +27,10 @@ m = molecules[0]
 #                                            })
 # print('###all molecules raw fit###')
 _gurobi_charge_fit(molecules, verbose=True)
-asd = [a.partial_charge for a in m.atom_objects]
+asd = [round(a.partial_charge,5) for a in m.atom_objects]
 print('###\n\nROUNDING\n\n###')
-_gurobi_post_hoc_round(molecules, verbose=True, round_places=3)
+# _gurobi_post_hoc_round(molecules, verbose=True, round_places=3)
+_pulp_post_hoc_round(molecules, verbose=True, round_places=3)
 print([a.partial_charge for a in m.atom_objects])
 print(asd)
 # print('###all molecules total charge###')

@@ -368,6 +368,9 @@ def _gurobi_init_variables(molecules: list[Molecule3D],
     """
     Internal method for using gurobi to assign atomic partial charges
     """
+    if 'gurobipy' not in sys.modules:
+        raise ModuleNotFoundError('gurobipy not imported')
+
     env = gp.Env(empty=True)
     env.setParam("OutputFlag", verbose)
     env.start()
@@ -410,6 +413,9 @@ def _gurobi_charge_fit(molecules: list[Molecule3D],
     """
     Internal method for using gurobi to assign atomic partial charges
     """
+
+    if 'gurobipy' not in sys.modules:
+        raise ModuleNotFoundError('gurobipy not imported')
 
     model, atoms_vars, atoms_vars_array = _gurobi_init_variables(molecules,
                                                                  verbose,
@@ -454,6 +460,9 @@ def _gurobi_post_hoc_round(molecules: list[Molecule3D],
     Implementation of a minmax problem of the rounded partial charges to the residuals
     """
 
+    if 'gurobipy' not in sys.modules:
+        raise ModuleNotFoundError('gurobipy not imported')
+
     model, atoms_vars, atoms_vars_array = _gurobi_init_variables(molecules,
                                                                  verbose,
                                                                  round_places
@@ -473,7 +482,7 @@ def _gurobi_post_hoc_round(molecules: list[Molecule3D],
         vtype=GRB.CONTINUOUS,
         lb=0,
     )
-    maxabs = model.addVar(vtype=GRB.CONTINUOUS)
+    max_abs = model.addVar(vtype=GRB.CONTINUOUS)
 
     # setting up the abs vars
     for molecule_atom_pair in index_lookup.keys():
@@ -483,10 +492,10 @@ def _gurobi_post_hoc_round(molecules: list[Molecule3D],
                 atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places))
         model.addConstr(abs_vars[molecule_atom_pair] >= -(
                 atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places))
-        model.addConstr(maxabs >= abs_vars[molecule_atom_pair])
+        model.addConstr(max_abs >= abs_vars[molecule_atom_pair])
 
     # minimise the maximum absolute value deviation from the initial charges
-    model.setObjective(maxabs)
+    model.setObjective(max_abs)
     model.optimize()
 
     # if round_places is not None:
@@ -499,6 +508,65 @@ def _gurobi_post_hoc_round(molecules: list[Molecule3D],
 
     return
 
+
+def _pulp_post_hoc_round(molecules: list[Molecule3D],
+                         flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+                         flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None,
+                         verbose: bool = False,
+                         round_places: int = 3,
+                         timeout: int = 60 * 5
+                         ) -> None:
+    """
+    Perform post hoc rounding with the pulp library
+    """
+    roundProblem = pulp.LpProblem('RoundingProblem', pulp.LpMinimize)
+
+    index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
+
+    atoms_vars = pulp.LpVariable.dicts('',
+                                       index_lookup.keys(),
+                                       lowBound=-(10 ** round_places - 1),
+                                       upBound=(10 ** round_places - 1),
+                                       cat='Integer')
+    abs_vars = pulp.LpVariable.dicts('abs', index_lookup.keys(), lowBound=0)
+
+    max_abs = pulp.LpVariable('max_abs', lowBound=0)
+
+    # set up variables to represent the absolute value of the difference
+    for molecule_atom_pair in index_lookup.keys():
+        # absolute values for the objective function
+        # atoms_vars[a['unique']].setInitialValue(int(a['fit_result']['charge'][0]*10**round_places))
+        roundProblem += abs_vars[molecule_atom_pair] >= (
+                atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places)
+        roundProblem += abs_vars[molecule_atom_pair] >= -(
+                atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places)
+        # all atoms in group have same charge
+        # need the length, i.e. if there are 3 atoms in the group the residual total is actually 3 times that
+        # constrain the maximum value (although this hopefully shouldn't matter
+        # roundProblem += atoms_vars[a['unique']] <= (10**round_places - 1) # e.g. want to round to 4 decimal places gives max value of 9999
+
+        # for Objective, minimise the maximum deviation
+        roundProblem += max_abs >= abs_vars[molecule_atom_pair]
+
+    roundProblem += max_abs
+
+    # print(roundProblem)
+    if timeout:
+        status = roundProblem.solve(solver=pulp.apis.PULP_CBC_CMD(
+            timeLimit=timeout,
+            # threads=4,
+            timeMode="cpu",
+            msg=verbose))
+    else:
+        status = roundProblem.solve(
+            solver=pulp.apis.PULP_CBC_CMD(
+                # threads=4,
+                timeMode="cpu",
+                msg=verbose)
+        )  # Solver
+    # return np.array([pulp.value(x) for x in atoms_vars.values()]).reshape(-1, 1) / float(10 ** round_places)
+    for key in index_lookup.keys():
+        key[1].partial_charge = pulp.value(atoms_vars[key]) * 10 ** - round_places
 
 class MoleculeFieldFitter:
     def __init__(self,
