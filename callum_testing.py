@@ -1,6 +1,7 @@
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.parsing.input_parsers import GAMESS_to_Molecule3D
-from chemistry_data_structure.helpers.field_fitting import MoleculeFieldFitter, lsq_partial_charge_fit, _gurobi_charge_fit
+from chemistry_data_structure.helpers.field_fitting import MoleculeFieldFitter,\
+    lsq_partial_charge_fit, _gurobi_charge_fit, _gurobi_post_hoc_round
 
 # from esp_analysis.ff_output_analysis import
 
@@ -15,23 +16,28 @@ paths = [
 molecules = [GAMESS_to_Molecule3D(open(path).read()) for path in paths]
 
 m = molecules[0]
-lsq_partial_charge_fit(m, 0)
-print('###1 molecule raw fit###')
-_gurobi_charge_fit([m], verbose=True)
-print('###1 molecule with total charge###')
-_gurobi_charge_fit([m], verbose=True,
-                   flat_sum_constraints = {'tot_charge':
-                                               {'pairs':tuple((m, atom_obj) for atom_obj in m.atom_objects),
-                                                'charge': 0.0}
-                                           })
-print('###all molecules raw fit###')
+# lsq_partial_charge_fit(m, 0)
+# print('###1 molecule raw fit###')
+# _gurobi_charge_fit([m], verbose=True)
+# print('###1 molecule with total charge###')
+# _gurobi_charge_fit([m], verbose=True,
+#                    flat_sum_constraints = {'tot_charge':
+#                                                {'pairs':tuple((m, atom_obj) for atom_obj in m.atom_objects),
+#                                                 'charge': 0.0}
+#                                            })
+# print('###all molecules raw fit###')
 _gurobi_charge_fit(molecules, verbose=True)
-print('###all molecules total charge###')
-_gurobi_charge_fit(molecules, verbose=True,
-                   flat_sum_constraints={f'tot_charge{jj}':
-                                             {'pairs': tuple((mm, atom_obj) for atom_obj in mm.atom_objects),
-                                              'charge': 0.0}
-                                         for jj, mm in enumerate(molecules)})
+asd = [a.partial_charge for a in m.atom_objects]
+print('###\n\nROUNDING\n\n###')
+_gurobi_post_hoc_round(molecules, verbose=True, round_places=3)
+print([a.partial_charge for a in m.atom_objects])
+print(asd)
+# print('###all molecules total charge###')
+# _gurobi_charge_fit(molecules, verbose=True,
+#                    flat_sum_constraints={f'tot_charge{jj}':
+#                                              {'pairs': tuple((mm, atom_obj) for atom_obj in mm.atom_objects),
+#                                               'charge': 0.0}
+#                                          for jj, mm in enumerate(molecules)})
 
 # xxx
 #

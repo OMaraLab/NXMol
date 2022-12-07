@@ -108,7 +108,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                 if minmax:
                     max_residual = pulp.LpVariable('max_charge', lowBound=0)
 
-                # set up variables to represent the absulte value of the difference
+                # set up variables to represent the absolute value of the difference
                 for a in range(self.num_atoms):
                     # absolute values for the objective function
                     # atoms_vars[a['unique']].setInitialValue(int(a['fit_result']['charge'][0]*10**round_places))

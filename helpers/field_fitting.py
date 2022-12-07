@@ -1,10 +1,8 @@
 ##### multifitted ESP field fitting machinery is located here
-# TODO: conversation about moving the individual fittin here as well should be had
-
 import numpy as np
 from numpy.linalg import lstsq
 # https://stackoverflow.com/questions/44508561/algorithm-that-numpy-is-using-for-numpy-linalg-lstsq
-import pulp  # todo might set this as optional dependency
+
 from scipy.spatial import distance_matrix
 from typing import Optional, Any, Union
 import sys
@@ -16,6 +14,11 @@ try:
 except ModuleNotFoundError:
     pass
 
+try:
+    import pulp
+except ModuleNotFoundError:
+    pass
+
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.objects.atom_bond import Atom3D
 
@@ -24,8 +27,6 @@ SYMMETRY_TYPING = Union[list[dict[Any, list[Any]]], dict[Any, dict[Any, list[Any
 SUM_TYPING = Any  # todo this is a bit of a mess, will work out later
 FLAT_SYMMETRY = dict[str, list[tuple[Molecule3D, Atom3D]]]
 
-
-# todo: maybe use the actual atom objects as keys for the dictionary rather than the internal atom indexes
 
 def _lsq_components(molecule: Molecule3D):
     # these setups are used for both solving methods
@@ -360,12 +361,10 @@ def _gurobi_attach_constraints(model: 'gp.Model',
     return gb_symmetry_constraints, gb_sum_constraints
 
 
-def _gurobi_charge_fit(molecules: list[Molecule3D],
-                       flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
-                       flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None,
-                       verbose: bool = False,
-                       round_places: Optional[int] = None
-                       ):
+def _gurobi_init_variables(molecules: list[Molecule3D],
+                           verbose: bool = False,
+                           round_places: Optional[int] = None
+                           ):
     """
     Internal method for using gurobi to assign atomic partial charges
     """
@@ -375,6 +374,7 @@ def _gurobi_charge_fit(molecules: list[Molecule3D],
     model = gp.Model(env=env)
 
     index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
+    # todo don't like this being called twoce
 
     if round_places is not None:
         # effectively sets upper and lower bounds of the charges as 1,-1
@@ -394,10 +394,31 @@ def _gurobi_charge_fit(molecules: list[Molecule3D],
             vtype=GRB.CONTINUOUS,
             lb=-1.0,
             ub=1.0)
+        # todo need to confirm the bounds on these values
 
         atoms_vars_array = np.array(list(atoms_vars.values())).reshape(-1, 1)
 
-    _gurobi_attach_constraints(
+    return model, atoms_vars, atoms_vars_array
+
+
+def _gurobi_charge_fit(molecules: list[Molecule3D],
+                       flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+                       flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None,
+                       verbose: bool = False,
+                       round_places: Optional[int] = None
+                       ):
+    """
+    Internal method for using gurobi to assign atomic partial charges
+    """
+
+    model, atoms_vars, atoms_vars_array = _gurobi_init_variables(molecules,
+                                                                 verbose,
+                                                                 round_places
+                                                                 )
+
+    index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
+
+    gb_symmetry_constraints, gb_sum_constraints = _gurobi_attach_constraints(
         model,
         atoms_vars,
         10 ** float(round_places) if round_places is not None else 1.0,
@@ -414,11 +435,69 @@ def _gurobi_charge_fit(molecules: list[Molecule3D],
 
     model.optimize()
     if round_places is not None:
-        q = np.vectorize(lambda var: var.getValue())(atoms_vars_array)
+        for key in index_lookup.keys():
+            key[1].partial_charge = atoms_vars[key].x * 10 ** - round_places
     else:
-        q = np.vectorize(lambda var: var.x)(atoms_vars_array)
+        for key in index_lookup.keys():
+            key[1].partial_charge = atoms_vars[key].x
 
-    return q
+    return
+
+
+def _gurobi_post_hoc_round(molecules: list[Molecule3D],
+                           flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+                           flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None,
+                           verbose: bool = False,
+                           round_places: int = 3
+                           ) -> None:
+    """
+    Implementation of a minmax problem of the rounded partial charges to the residuals
+    """
+
+    model, atoms_vars, atoms_vars_array = _gurobi_init_variables(molecules,
+                                                                 verbose,
+                                                                 round_places
+                                                                 )
+    index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
+
+    gb_symmetry_constraints, gb_sum_constraints = _gurobi_attach_constraints(
+        model,
+        atoms_vars,
+        10 ** float(round_places),
+        flat_symmetry_constraints,
+        flat_sum_constraints
+    )
+
+    abs_vars = model.addVars(
+        index_lookup.keys(),
+        vtype=GRB.CONTINUOUS,
+        lb=0,
+    )
+    maxabs = model.addVar(vtype=GRB.CONTINUOUS)
+
+    # setting up the abs vars
+    for molecule_atom_pair in index_lookup.keys():
+        # this method requires the partial charges to already be assigned to the atoms, then the values
+        # are accessed directly
+        model.addConstr(abs_vars[molecule_atom_pair] >= (
+                atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places))
+        model.addConstr(abs_vars[molecule_atom_pair] >= -(
+                atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places))
+        model.addConstr(maxabs >= abs_vars[molecule_atom_pair])
+
+    # minimise the maximum absolute value deviation from the initial charges
+    model.setObjective(maxabs)
+    model.optimize()
+
+    # if round_places is not None:
+    #     q = np.vectorize(lambda var: var.getValue())(atoms_vars_array)
+    # else:
+    #     q = np.vectorize(lambda var: var.x)(atoms_vars_array)
+
+    for key in index_lookup.keys():
+        key[1].partial_charge = atoms_vars[key].x * 10 ** - round_places
+
+    return
 
 
 class MoleculeFieldFitter:
