@@ -90,7 +90,7 @@ def _generate_constraint_matrices(index_lookup: dict,
                                   ) -> Union[np.array, np.array]:
     """
     Internal method for setting up the constraint matrices
-    # todo might merge with _generate_lsq_matrices of they see no separate use
+    # todo might merge with _generate_lsq_matrices if they see no separate use
     """
 
     # number of atoms involved in symmetry constraints
@@ -130,24 +130,61 @@ def _generate_constraint_matrices(index_lookup: dict,
     return constraint_matrix, constraint_target
 
 
+def _generate_transformed_lsq(coeff_matrix: np.array,
+                              esp_vector: np.array,
+                              constraint_matrix: np.array,
+                              constraint_target: np.array
+                              ) -> Union[np.array, np.array]:
+    """
+    Combines the constraint matrices and standard lsq components into a single constrained lsq problem
+    """
+
+    num_constraints = constraint_target.shape[0]  # each row corresponds to a constraint
+    num_atoms = coeff_matrix.shape[1]  # each column corresponds to an atom
+
+    # setting up the new coefficient matrix
+    transformed_coeff_matrix = np.zeros(
+        (num_constraints + num_atoms, num_constraints + num_atoms)
+    )
+    transformed_coeff_matrix[:self.num_atoms, :self.num_atoms] = coeff_matrix.T @ coeff_matrix
+    transformed_coeff_matrix[self.num_atoms:, :self.num_atoms] = constraint_matrix
+    transformed_coeff_matrix[:self.num_atoms, self.num_atoms:] = constraint_matrix.T
+
+    # setting up the new target vector
+    transformed_target = np.zeros((self.num_atoms + num_constraints, 1))
+    transformed_target[:self.num_atoms] = coeff_matrix.T @ esp_vector
+    transformed_target[self.num_atoms:] = constraint_target
+
+    return transformed_coeff_matrix, transformed_target
+
+
 def _lsq_charge_fit(molecules: list[Molecule3D],
                     flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
-                    flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None) -> np.array:
+                    flat_sum_constraints: list[tuple[tuple[Molecule3D, int], float]] = None
+                    ) -> np.array:
     """
     Internal function for performing the fitting process and setting up the constraint matrices based off the molecules
     And the preprocessed constraint information
     """
+    # todo, need to decide if want to switch between assigning partial charges directly, or having the option to
+    #  output as a dictionary lookup
     index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
+    constraint_matrix, constraint_target = _generate_constraint_matrices(index_lookup,
+                                                                         flat_symmetry_constraints,
+                                                                         flat_sum_constraints)
+    transformed_coeff_matrix, transformed_target = _generate_transformed_lsq(coeff_matrix,
+                                                                             esp_vector,
+                                                                             constraint_matrix,
+                                                                             constraint_target)
+    solution, residuals, rank, singular_values = lstsq(transformed_coeff_matrix,
+                                                                   transformed_target,
+                                                       rcond=None)
 
-    # q = inv(A.T @ A) @ A.T @ b
-    # q = inv(A_star) @ b_star
-    q = lstsq(A_star, b_star, rcond=None)
+    # assign the partial charges directly to the atoms
+    # for atom_iter, charge in enumerate(solution.T[0]):
+    #     index_backlookup[atom_iter][1].partial_charge = charge
 
-    return {
-        'A_star': A_star,
-        'b_star': b_star,
-        'q_star': q  # this vector also has the Lagrangian's
-    }
+    return solution, residuals, rank, singular_values
 
 
 def flatten_symmetry(molecules: list[Molecule3D],
