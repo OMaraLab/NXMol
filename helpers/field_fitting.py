@@ -4,7 +4,7 @@ from numpy.linalg import lstsq
 # https://stackoverflow.com/questions/44508561/algorithm-that-numpy-is-using-for-numpy-linalg-lstsq
 
 from scipy.spatial import distance_matrix
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, Sequence
 import sys
 import warnings
 
@@ -35,13 +35,19 @@ FLAT_SUM = dict[str,
 ]
 
 
-def _lsq_components(molecule: Molecule3D):
-    # these setups are used for both solving methods
+class ConstraintNotSatisfied(Exception):
+    pass
 
-    # default load units are bohrs
 
-    # currently unknown units of the surface
-    # want rows to correspond to every atom for each grid point
+def _lsq_components(molecule: Molecule3D) -> tuple[np.array, np.array]:
+    """
+    function to generate linear formulation of the field fit problem from molecule3D objects
+    default load units are bohr
+
+    :param molecule: Single Molecule3D object, must have esp field information populated
+    :return: tuple of *index_lookup*
+
+    """
 
     # assumes a.u.
     distance_pairs = distance_matrix(molecule._esp_grid_coords, molecule.atom_coord_matrix)
@@ -51,10 +57,14 @@ def _lsq_components(molecule: Molecule3D):
     return A, b
 
 
-def _generate_lsq_matrices(molecules: list[Molecule3D]):
+def _generate_lsq_matrices(molecules: Sequence[Molecule3D]
+                           ) -> tuple[dict, dict, np.array, np.array]:
     """
-    Method for generating the internal coefficient matrices, and the index lookups capable of tracking the rows/columns
-    also works for a single molecule
+    generic function for generating the internal coefficient matrices for a molecule system, and the index lookups capable of
+     tracking the rows/columns, also works for a single molecule
+    :param molecules: List of Molecule3D objects, must have esp field information populated
+    :return: tuple of,
+
     """
     # separate out the individual esp and coefficient matrix data
     single_coeffs, single_esps = zip(*[_lsq_components(molecule) for molecule in molecules])
@@ -180,7 +190,7 @@ def _generate_transformed_lsq(coeff_matrix: np.array,
     return transformed_coeff_matrix, transformed_target
 
 
-def _lsq_charge_fit(molecules: list[Molecule3D],
+def _lsq_charge_fit(molecules: Sequence[Molecule3D],
                     flat_symmetry_constraints: FLAT_SYMMETRY = None,
                     flat_sum_constraints: FLAT_SUM = None
                     ) -> np.array:
@@ -217,7 +227,7 @@ def _lsq_charge_fit(molecules: list[Molecule3D],
     return solution, residuals, rank, singular_values
 
 
-def flatten_symmetry(molecules: list[Molecule3D],
+def flatten_symmetry(molecules: Sequence[Molecule3D],
                      symmetry_groups: SYMMETRY_TYPING,
                      index_type: str = 'name',
                      molecule_map: Optional[dict[Any, Molecule3D]] = None
@@ -256,7 +266,7 @@ def flatten_symmetry(molecules: list[Molecule3D],
     return flat_symmetry_constraints
 
 
-def flatten_sum(molecules: list[Molecule3D],
+def flatten_sum(molecules: Sequence[Molecule3D],
                 sum_groups: SUM_TYPING,
                 index_type: str = 'name',
                 molecule_map: Optional[dict[Any, Molecule3D]] = None
@@ -336,7 +346,7 @@ def _gurobi_attach_constraints(model: 'gp.Model',
     return gb_symmetry_constraints, gb_sum_constraints
 
 
-def _gurobi_init_variables(molecules: list[Molecule3D],
+def _gurobi_init_variables(molecules: Sequence[Molecule3D],
                            verbose: bool = False,
                            round_places: Optional[int] = None
                            ):
@@ -352,7 +362,7 @@ def _gurobi_init_variables(molecules: list[Molecule3D],
     model = gp.Model(env=env)
 
     index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
-    # todo don't like this being called twoce
+    # todo don't like this being called twice
 
     if round_places is not None:
         # effectively sets upper and lower bounds of the charges as 1,-1
@@ -379,7 +389,7 @@ def _gurobi_init_variables(molecules: list[Molecule3D],
     return model, atoms_vars, atoms_vars_array
 
 
-def _gurobi_charge_fit(molecules: list[Molecule3D],
+def _gurobi_charge_fit(molecules: Sequence[Molecule3D],
                        flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
                        flat_sum_constraints: FLAT_SUM = None,
                        verbose: bool = False,
@@ -425,15 +435,17 @@ def _gurobi_charge_fit(molecules: list[Molecule3D],
     return
 
 
-def partial_charge_fit(molecules: list[Molecule3D],
+def partial_charge_fit(molecules: Sequence[Molecule3D],
                        total_charge_constraint: Optional[dict[Molecule3D, Union[int, None]]],
-                       symmetry_constraints: object = None,
-                       sum_constraints: object = None,
+                       symmetry_constraints: FLAT_SYMMETRY = None,
+                       sum_constraints: FLAT_SUM = None,
                        verbose: bool = False,
-                       method: object = 'lstsq',
+                       method: str = 'lstsq',
                        round_places: Optional[int] = None
                        ) -> None:
     """
+
+
     Top level function for assigning atomic partial charges to Molecule3D objects. Partial charges are assigned to
     the given molecule objects not returned.
 
@@ -444,13 +456,13 @@ def partial_charge_fit(molecules: list[Molecule3D],
     * *grb-round* Gurobi Quadratic solver method with simultaneous rounded charge optimisation, requires round_places
     argument
 
-        :param molecules: List of molecule objects to be fitted
+        :param molecules: Sequence of molecule objects to be fitted
         :param total_charge_constraint: Dictionary of total charge targets for each molecule, symmetry constraints are
         then generated and added to `sum_constraints`
         :param symmetry_constraints: flattened symmetry constraint configurations
         :param sum_constraints: flattened sum constraint configuration
         :param verbose: Fitting process flag for ILP methods
-        :param method: method for assigning the partial charges
+        :param method: method for assigning the partial charges, see above
         :param round_places: decimal places to round charges to using method 'grb-round'
         :rtype: None
         :return: None
@@ -460,7 +472,7 @@ def partial_charge_fit(molecules: list[Molecule3D],
     if round_places and method != 'grb-round':
         raise ValueError(f"round_places={round_places} given but method is not compatible with method '{method}'")
 
-    methods = ('lstq', 'grb', 'grb-round')
+    methods = ('lstsq', 'grb', 'grb-round')
     if method not in methods:
         raise ValueError(f"Unknown method '{method}', options are {methods}")
 
@@ -477,9 +489,9 @@ def partial_charge_fit(molecules: list[Molecule3D],
 
     if method == 'lstsq':
 
-        solution, residuals, rank, singular_values = _lsq_charge_fit(molecules,
-                                                                     symmetry_constraints,
-                                                                     sum_constraints)
+        solution, residuals, rank, singular_values = _lsq_charge_fit(molecules=molecules,
+                                                                     flat_symmetry_constraints=symmetry_constraints,
+                                                                     flat_sum_constraints=sum_constraints)
     elif method == 'grb':
         _gurobi_charge_fit(molecules=molecules,
                            flat_symmetry_constraints=symmetry_constraints,
@@ -499,33 +511,51 @@ def partial_charge_fit(molecules: list[Molecule3D],
     return
 
 
-def _gurobi_post_hoc_round(molecules: list[Molecule3D],
-                           flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
+def _gurobi_post_hoc_round(molecules: Sequence[Molecule3D],
+                           flat_symmetry_constraints: FLAT_SYMMETRY = None,
                            flat_sum_constraints: FLAT_SUM = None,
                            verbose: bool = False,
                            round_places: int = 3
                            ) -> None:
     """
-    Implementation of a minmax problem of the rounded partial charges to the residuals
+
+    Rounds the partial charges to specified number of decimal places, by minimising the maximum residual between the
+    unrounded and rounded charges.
+
+    Method uses an ILP minmax implementation in Gurobi
+
+    :param molecules:
+    :param flat_symmetry_constraints:
+    :param flat_sum_constraints:
+    :param verbose:
+    :param round_places:
+    :return:
     """
 
     if 'gurobipy' not in sys.modules:
         raise ModuleNotFoundError('gurobipy not imported')
 
-    model, atoms_vars, atoms_vars_array = _gurobi_init_variables(molecules,
-                                                                 verbose,
-                                                                 round_places
+    # set up the scaling for the sum constraints
+    sum_target_scale = 10 ** float(round_places)
+
+    # all gurobi models are initiated with the same variables for partial charge assignment or rounding
+    model, atoms_vars, atoms_vars_array = _gurobi_init_variables(molecules=molecules,
+                                                                 verbose=verbose,
+                                                                 round_places=round_places
                                                                  )
+    # generate the indexing information for the molecule set
     index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
 
+    # implement the given constraints in the model
     gb_symmetry_constraints, gb_sum_constraints = _gurobi_attach_constraints(
-        model,
-        atoms_vars,
-        10 ** float(round_places),
-        flat_symmetry_constraints,
-        flat_sum_constraints
+        model=model,
+        atom_vars=toms_vars,
+        sum_target_scale=sum_target_scale,
+        flat_symmetry_constraints=flat_symmetry_constraints,
+        flat_sum_constraints=flat_sum_constraints
     )
 
+    # setup the absolute value variables specific to the minmax problem
     abs_vars = model.addVars(
         index_lookup.keys(),
         vtype=GRB.CONTINUOUS,
@@ -533,14 +563,14 @@ def _gurobi_post_hoc_round(molecules: list[Molecule3D],
     )
     max_abs = model.addVar(vtype=GRB.CONTINUOUS)
 
-    # setting up the abs vars
+    # enforcing the constraints to initialise the absolute value variables
     for molecule_atom_pair in index_lookup.keys():
         # this method requires the partial charges to already be assigned to the atoms, then the values
-        # are accessed directly
+        # are accessed directly to calculate the residuals
         model.addConstr(abs_vars[molecule_atom_pair] >= (
-                atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places))
+                atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * sum_target_scale))
         model.addConstr(abs_vars[molecule_atom_pair] >= -(
-                atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * 10 ** round_places))
+                atoms_vars[molecule_atom_pair] - molecule_atom_pair[1].partial_charge * sum_target_scale))
         model.addConstr(max_abs >= abs_vars[molecule_atom_pair])
 
     # minimise the maximum absolute value deviation from the initial charges
@@ -552,13 +582,14 @@ def _gurobi_post_hoc_round(molecules: list[Molecule3D],
     # else:
     #     q = np.vectorize(lambda var: var.x)(atoms_vars_array)
 
+    # assign the partial charges to the atoms
     for key in index_lookup.keys():
         key[1].partial_charge = atoms_vars[key].x * 10 ** - round_places
 
     return
 
 
-def _pulp_post_hoc_round(molecules: list[Molecule3D],
+def _pulp_post_hoc_round(molecules: Sequence[Molecule3D],
                          flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
                          flat_sum_constraints: FLAT_SUM = None,
                          verbose: bool = False,
@@ -566,7 +597,19 @@ def _pulp_post_hoc_round(molecules: list[Molecule3D],
                          timeout: int = 60 * 5
                          ) -> None:
     """
-    Perform post hoc rounding with the pulp library
+
+    Rounds the partial charges to specified number of decimal places, by minimising the maximum residual between the
+    unrounded and rounded charges.
+
+    Method uses an ILP minmax implementation in pulp
+
+    :param molecules:
+    :param flat_symmetry_constraints:
+    :param flat_sum_constraints:
+    :param verbose:
+    :param round_places:
+    :param timeout:
+    :return:
     """
 
     if flat_symmetry_constraints is None:
@@ -636,38 +679,68 @@ def _pulp_post_hoc_round(molecules: list[Molecule3D],
     return
 
 
-def post_hoc_charge_round(molecules: list[Molecule3D],
+def post_hoc_charge_round(molecules: Sequence[Molecule3D],
                           round_places: int = 3,
                           flat_symmetry_constraints: list[tuple[Molecule3D, Atom3D]] = None,
                           flat_sum_constraints: FLAT_SUM = None,
                           verbose: bool = False,
                           timeout: int = 60 * 5,
-                          engine='pulp'
+                          engine='pulp_cbc'
                           ):
-    if engine == 'pulp':
-        # todo specify molecule=molecule instead of the implicit arguments
-        _pulp_post_hoc_round(molecules,
-                             flat_symmetry_constraints,
-                             flat_sum_constraints,
-                             verbose,
-                             round_places,
-                             timeout
+    if engine == 'pulp_cbc':
+        _pulp_post_hoc_round(molecules=molecules,
+                             flat_symmetry_constraints=flat_symmetry_constraints,
+                             flat_sum_constraints=flat_sum_constraints,
+                             verbose=verbose,
+                             round_places=round_places,
+                             timeout=timeout
                              )
     elif engine == 'gurobi':
-        _gurobi_post_hoc_round(molecules,
-                               flat_symmetry_constraints,
-                               flat_sum_constraints,
-                               verbose,
-                               round_places
+        _gurobi_post_hoc_round(molecules=molecules,
+                               flat_symmetry_constraints=flat_symmetry_constraints,
+                               flat_sum_constraints=flat_sum_constraints,
+                               verbose=verbose,
+                               round_places=round_places
                                )
     else:
         raise ValueError(f'Unknown engine {engine}, options are "gurobi" or "pulp"')
     return
 
 
+def _symmetry_constraint_charge(flat_symmetry_constraints=FLAT_SYMMETRY,
+                                assert_enforced: bool = False) -> dict[Any, float]:
+    if assert_enforced:
+        for group_name, pairs in flat_symmetry_constraints.items():
+            if not np.allclose([p[1].partial_charge for p in pairs], pairs[0][1].partial_charge):
+                raise ConstraintNotSatisfied(f'Symmetry group {group_name} not equivalent within tolerance.')
+
+    return {
+        group_name: pairs[0][1].partial_charge for group_name, pairs in flat_symmetry_constraints.items()
+    }
+
+
+# def _inference_charge_transfer(field_molecules: Sequence[Molecule3D],
+#                                infer_molecules: Sequence[Molecule3D],
+#                                flat_symmetry_constraints=FLAT_SYMMETRY,
+#                                flat_sum_constraints=FLAT_SUM,
+#                                assert_coverage: bool = True
+#                                ):
+#     # think this function will assume the fitting has already taken place, and will just act as a method to transfer
+#     # charges using the available constraint information
+#
+#     # there would be a faster way to set this up by separating out the infered and field molecules but
+#     # if this is the only iteration then probable doesn't matter.
+#     # although would need to filter it before the lsq matrix generation or it might fall over
+#
+#     for group_name, pairs in flat_symmetry_constraints.items():
+#
+#
+#     return
+
+
 class MoleculeFieldFitter:
     def __init__(self,
-                 molecules: list[Molecule3D]):
+                 molecules: Sequence[Molecule3D]):
         """
         The MoleculeFieldFitter is designed to act as an interactive class for both setting up the system
         and querying the results of the solution
