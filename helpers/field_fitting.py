@@ -34,6 +34,8 @@ FLAT_SUM = dict[str,
                 ]
 ]
 
+# todo need to write failsafe check for full coverage of inferred molecules
+
 
 class ConstraintNotSatisfied(Exception):
     pass
@@ -248,8 +250,7 @@ def _lsq_charge_fit(molecules: Sequence[Molecule3D],
 
     assert np.linalg.matrix_rank(transformed_coeff_matrix) ==\
            transformed_target.shape[0], 'matrix is not full rank. If using inferred charge generation this can ' \
-                                                                                           'result from not fully ' \
-                                                                                           'covering the new molecules '
+                                         'result from not fully covering the inferred molecules'
 
     solution, residuals, rank, singular_values = lstsq(transformed_coeff_matrix,
                                                        transformed_target,
@@ -508,8 +509,11 @@ def partial_charge_fit(molecules: Sequence[Molecule3D],
 
 
     """
-    if round_places and method != 'grb-round':
+    if round_places is not None and method != 'grb-round':
         raise ValueError(f"round_places={round_places} given but method is not compatible with method '{method}'")
+
+    if molecules_infer is not None and method != 'lstsq':
+        raise NotImplementedError('Inference only available for least squares assignment')
 
     methods = ('lstsq', 'grb', 'grb-round')
     if method not in methods:
@@ -530,7 +534,8 @@ def partial_charge_fit(molecules: Sequence[Molecule3D],
 
         solution, residuals, rank, singular_values = _lsq_charge_fit(molecules=molecules,
                                                                      flat_symmetry_constraints=symmetry_constraints,
-                                                                     flat_sum_constraints=sum_constraints)
+                                                                     flat_sum_constraints=sum_constraints,
+                                                                     molecules_infer=molecules_infer)
     elif method == 'grb':
         _gurobi_charge_fit(molecules=molecules,
                            flat_symmetry_constraints=symmetry_constraints,
@@ -758,234 +763,234 @@ def _symmetry_constraint_charge(flat_symmetry_constraints=FLAT_SYMMETRY,
     }
 
 
-class MoleculeFieldFitter:
-    def __init__(self,
-                 molecules: Sequence[Molecule3D]):
-        """
-        The MoleculeFieldFitter is designed to act as an interactive class for both setting up the system
-        and querying the results of the solution
-        :param molecules: a list of the chemical data structure molecules
-        """
-        # maintains a list of the current molecules the system
-        self._molecules = molecules
-        # statuses
-        # unsolved = 0
-        # solved = 1
-        # error = -1
-        self._status = 0
-        self._num_constraints = 0
-        self._constraint_matrix: np.array = np.array([])
-        self._coeff_matrix: np.array = None
-        self._target_vector: np.array = None
-        self._constraint_target: np.array = None
-        self._transformed_target: np.array = None
-        self._transformed_coeff_matrix: np.array = None
-        self._solution: np.array = None
-        self._solution_round: np.array = None
-        self._residuals: np.array = None
-
-        # constraints
-        self._flat_symmetry_constraints: FLAT_SYMMETRY = {}
-        self._flat_sum_constraints: FLAT_SUM = {}
-
-        self._index_lookup: dict[tuple[Molecule3D, Atom3D], int] = {}
-        self._index_backlookup: dict[int, tuple[Molecule3D, Atom3D]] = {}
-
-    @property
-    def status(self):
-        return self._status
-
-    @property
-    def molecules(self):
-        return self._molecules
-
-    @property
-    def num_atoms(self):
-        return self._coeff_matrix.shape[1]
-
-    @property
-    def sum_constraints(self):
-        return self._flat_sum_constraints
-
-    @property
-    def symmetry_constraints(self):
-        return self._flat_symmetry_constraints
-
-    def add_molecule(self, molecule: Molecule3D):
-        """
-
-        :param molecule:
-        """
-        if not isinstance(molecule, Molecule3D):
-            raise TypeError('molecule must be of type Molecule3D')
-        # TODO: can currently add the same molecule more than once, need to check if this is intended behaviour
-        self._molecules.append(molecule)
-
-    def load_constraints(self,
-                         symmetry_constraints=None,
-                         sum_constraints=None,
-                         # index_type: str,
-                         ):
-        """
-        Constraints should be of the form:
-        {'group': {molecule_obj}: [internal atom indexes]}
-        :param sum_constraints:
-        :param symmetry_constraints:
-        :return:
-        """
-        # size of the constraint matrix is given by M+N-G
-        # M Molecules (assuming the total charge constraints), N atoms (constrained), G groups
-
-        # https://stackoverflow.com/questions/4391697/find-the-index-of-a-dict-within-a-list-by-matching-the-dicts-value
-        # todo Might be lenient with the atom indexing, since the molecules can lookup based on a number of methods
-        # todo currently the groups are assumed to be merged, it is known not a trivial thing to implement
-
-        num_constrained_atoms = sum(
-            sum(len(atom_list) for atom_list in group_dict.values())
-            for group_dict in symmetry_constraints.values()
-        )
-
-        self._num_constraints = len(sum_constraints) + num_constrained_atoms - len(symmetry_constraints)
-
-        # need one row for every constraint and one row for every atom
-        self._constraint_matrix = np.zeros((self._num_constraints,
-                                            self.num_atoms))
-        self._constraint_target = np.zeros((self._num_constraints, 1))
-
-        self._flat_sum_constraints = []
-        self._flat_symmetry_constraints = {}
-
-        # iterate through the groups, and using the lookup dictionaries to map the molecule atom index
-        # to the filters internal matrix columns
-        constraint_iter = 0
-        for group_name, group_dict in symmetry_constraints.items():
-            # flatten out the groups into key,val pair
-            flattened_group = [(molecule, atom_index) for molecule, atom_list in group_dict.items()
-                               for atom_index in atom_list]
-
-            # iterate through these pairs to utilise the column location lookup
-            # assign the appropriate coefficients using the daisy chain approach
-            for mol_atom_pair_1, mol_atom_pair_2 in zip(flattened_group[:-1], flattened_group[1:]):
-                self._constraint_matrix[constraint_iter,
-                                        self._index_lookup[mol_atom_pair_1]] = 1.0
-                self._constraint_matrix[constraint_iter,
-                                        self._index_lookup[mol_atom_pair_2]] = -1.0
-
-                constraint_iter += 1
-
-            self._flat_symmetry_constraints[group_name] = flattened_group
-
-        # iterate over the sum constraints, using similar methods for looking up indices
-        for sum_dict in sum_constraints:
-            flattened_group = [(molecule, atom_index) for molecule, atom_list in sum_dict['atoms'].items()
-                               for atom_index in atom_list]
-            for mol_atom_pair in flattened_group:
-                self._constraint_matrix[constraint_iter, self._index_lookup[mol_atom_pair]] = 1.0
-            self._constraint_target[constraint_iter] = sum_dict['value']
-            constraint_iter += 1
-
-            self._flat_sum_constraints.append((flattened_group, sum_dict['value']))
-
-    def fit(self):
-        """
-        Function to generate the assigned partial charges
-        :return:
-        """
-
-        # generate the new matrices used for the fitting procedure (with constraints)
-
-        self._transformed_coeff_matrix = np.zeros(
-            (self._num_constraints + self.num_atoms, self._num_constraints + self.num_atoms)
-        )
-
-        if self._num_constraints > 0:
-            self._transformed_coeff_matrix[:self.num_atoms, :self.num_atoms] = self._coeff_matrix.T @ self._coeff_matrix
-            self._transformed_coeff_matrix[self.num_atoms:, :self.num_atoms] = self._constraint_matrix
-            self._transformed_coeff_matrix[:self.num_atoms, self.num_atoms:] = self._constraint_matrix.T
-
-            self._transformed_target = np.zeros((self.num_atoms + self._num_constraints, 1))
-            self._transformed_target[:self.num_atoms] = self._coeff_matrix.T @ self._target_vector
-            self._transformed_target[self.num_atoms:] = self._constraint_target
-
-        else:
-            self._transformed_coeff_matrix = self._coeff_matrix
-            self._transformed_target = self._target_vector
-
-        self._solution, self._residuals, rank, singular_values = lstsq(self._transformed_coeff_matrix,
-                                                                       self._transformed_target,
-                                                                       rcond=None)
-        self._status = 1
-        return self._solution
-
-    def round_post_hoc(self,
-                       round_places: int = 3,
-                       timeout: int = 10 * 60):
-        """
-        Rounds the assigned partial charges to an arbitrary decimal place
-        Performs a minmax of the residuals between the rounded values and the original
-        :return: <np.array> containing the assigned charges ordered by internal atom index
-        """
-        self._solution_round = np.zeros((self.num_atoms, 1))
-
-        roundProblem = pulp.LpProblem('SystemRounding', pulp.LpMinimize)
-
-        ### Variables
-        atoms_vars = pulp.LpVariable.dicts('', range(self.num_atoms), lowBound=-(10 ** round_places - 1),
-                                           upBound=(10 ** round_places - 1), cat='Integer')
-        abs_vars = pulp.LpVariable.dicts('abs', range(self.num_atoms), lowBound=0)
-        max_residual = pulp.LpVariable('max_charge', lowBound=0)
-
-        ### Constraints
-
-        for atom_index_internal in range(self.num_atoms):
-            # constructing the absolute value variables of each charge
-            # need powers of 10 as setup rounded values variables as integers with units of 10^-(round_places)
-            roundProblem += abs_vars[atom_index_internal] >= (
-                    atoms_vars[atom_index_internal] - self._solution[atom_index_internal][0] * 10 ** round_places)
-            roundProblem += abs_vars[atom_index_internal] >= -(
-                    atoms_vars[atom_index_internal] - self._solution[atom_index_internal][0] * 10 ** round_places)
-
-            # set up constraint to define the maximum residual
-            roundProblem += max_residual >= abs_vars[atom_index_internal]
-
-        # enforcing the existing constraints on the system
-
-        # daisy chaining the equivalence (symmetry) groups
-        for group_name, pairs in self._flat_symmetry_constraints.items():
-            for p_1, p_2 in zip(pairs[:-1], pairs[1:]):
-                roundProblem += atoms_vars[self._index_lookup[p_1]] == atoms_vars[self._index_lookup[p_2]]
-
-        for pairs, charge in self._flat_sum_constraints:
-            roundProblem += sum(atoms_vars[self._index_lookup[p]] for p in pairs) == charge
-
-        # Set the objective as minimising the maximum residual
-        roundProblem += max_residual
-
-        solver = pulp.apis.PULP_CBC_CMD(
-            maxSeconds=timeout,
-            threads=4,
-            timeMode="cpu")
-
-        status = roundProblem.solve(solver=solver)
-
-        if roundProblem.status != 1:
-            print('ILP rounding failure')
-            raise Exception  # todo make own exception
-
-        # slice notation means this line will throw an error if vectors are incorrectly sized
-        # as it will attempt to broadcast the values rather than overwrite the variable
-        self._solution_round[:] = np.array([pulp.value(a) for a in atoms_vars.values()]).reshape(-1,
-                                                                                                 1) * 10 ** -round_places
-
-    def transfer_partial_charges(self):
-        """
-        Function to transfer the calculated partial charges into the Molecule3D partial charge property
-        """
-        if self._status != 1:
-            print('system not yet fitted')
-            raise Exception  # todo make a new exception
-
-        for molecule in self.molecules:
-            for atom_internal_index in range(molecule.num_atoms):
-                molecule.atom_objects[atom_internal_index].partial_charge = \
-                    self._solution[self._index_lookup[molecule, atom_internal_index]][0]
+# class MoleculeFieldFitter:
+#     def __init__(self,
+#                  molecules: Sequence[Molecule3D]):
+#         """
+#         The MoleculeFieldFitter is designed to act as an interactive class for both setting up the system
+#         and querying the results of the solution
+#         :param molecules: a list of the chemical data structure molecules
+#         """
+#         # maintains a list of the current molecules the system
+#         self._molecules = molecules
+#         # statuses
+#         # unsolved = 0
+#         # solved = 1
+#         # error = -1
+#         self._status = 0
+#         self._num_constraints = 0
+#         self._constraint_matrix: np.array = np.array([])
+#         self._coeff_matrix: np.array = None
+#         self._target_vector: np.array = None
+#         self._constraint_target: np.array = None
+#         self._transformed_target: np.array = None
+#         self._transformed_coeff_matrix: np.array = None
+#         self._solution: np.array = None
+#         self._solution_round: np.array = None
+#         self._residuals: np.array = None
+#
+#         # constraints
+#         self._flat_symmetry_constraints: FLAT_SYMMETRY = {}
+#         self._flat_sum_constraints: FLAT_SUM = {}
+#
+#         self._index_lookup: dict[tuple[Molecule3D, Atom3D], int] = {}
+#         self._index_backlookup: dict[int, tuple[Molecule3D, Atom3D]] = {}
+#
+#     @property
+#     def status(self):
+#         return self._status
+#
+#     @property
+#     def molecules(self):
+#         return self._molecules
+#
+#     @property
+#     def num_atoms(self):
+#         return self._coeff_matrix.shape[1]
+#
+#     @property
+#     def sum_constraints(self):
+#         return self._flat_sum_constraints
+#
+#     @property
+#     def symmetry_constraints(self):
+#         return self._flat_symmetry_constraints
+#
+#     def add_molecule(self, molecule: Molecule3D):
+#         """
+#
+#         :param molecule:
+#         """
+#         if not isinstance(molecule, Molecule3D):
+#             raise TypeError('molecule must be of type Molecule3D')
+#         # TODO: can currently add the same molecule more than once, need to check if this is intended behaviour
+#         self._molecules.append(molecule)
+#
+#     def load_constraints(self,
+#                          symmetry_constraints=None,
+#                          sum_constraints=None,
+#                          # index_type: str,
+#                          ):
+#         """
+#         Constraints should be of the form:
+#         {'group': {molecule_obj}: [internal atom indexes]}
+#         :param sum_constraints:
+#         :param symmetry_constraints:
+#         :return:
+#         """
+#         # size of the constraint matrix is given by M+N-G
+#         # M Molecules (assuming the total charge constraints), N atoms (constrained), G groups
+#
+#         # https://stackoverflow.com/questions/4391697/find-the-index-of-a-dict-within-a-list-by-matching-the-dicts-value
+#         # todo Might be lenient with the atom indexing, since the molecules can lookup based on a number of methods
+#         # todo currently the groups are assumed to be merged, it is known not a trivial thing to implement
+#
+#         num_constrained_atoms = sum(
+#             sum(len(atom_list) for atom_list in group_dict.values())
+#             for group_dict in symmetry_constraints.values()
+#         )
+#
+#         self._num_constraints = len(sum_constraints) + num_constrained_atoms - len(symmetry_constraints)
+#
+#         # need one row for every constraint and one row for every atom
+#         self._constraint_matrix = np.zeros((self._num_constraints,
+#                                             self.num_atoms))
+#         self._constraint_target = np.zeros((self._num_constraints, 1))
+#
+#         self._flat_sum_constraints = []
+#         self._flat_symmetry_constraints = {}
+#
+#         # iterate through the groups, and using the lookup dictionaries to map the molecule atom index
+#         # to the filters internal matrix columns
+#         constraint_iter = 0
+#         for group_name, group_dict in symmetry_constraints.items():
+#             # flatten out the groups into key,val pair
+#             flattened_group = [(molecule, atom_index) for molecule, atom_list in group_dict.items()
+#                                for atom_index in atom_list]
+#
+#             # iterate through these pairs to utilise the column location lookup
+#             # assign the appropriate coefficients using the daisy chain approach
+#             for mol_atom_pair_1, mol_atom_pair_2 in zip(flattened_group[:-1], flattened_group[1:]):
+#                 self._constraint_matrix[constraint_iter,
+#                                         self._index_lookup[mol_atom_pair_1]] = 1.0
+#                 self._constraint_matrix[constraint_iter,
+#                                         self._index_lookup[mol_atom_pair_2]] = -1.0
+#
+#                 constraint_iter += 1
+#
+#             self._flat_symmetry_constraints[group_name] = flattened_group
+#
+#         # iterate over the sum constraints, using similar methods for looking up indices
+#         for sum_dict in sum_constraints:
+#             flattened_group = [(molecule, atom_index) for molecule, atom_list in sum_dict['atoms'].items()
+#                                for atom_index in atom_list]
+#             for mol_atom_pair in flattened_group:
+#                 self._constraint_matrix[constraint_iter, self._index_lookup[mol_atom_pair]] = 1.0
+#             self._constraint_target[constraint_iter] = sum_dict['value']
+#             constraint_iter += 1
+#
+#             self._flat_sum_constraints.append((flattened_group, sum_dict['value']))
+#
+#     def fit(self):
+#         """
+#         Function to generate the assigned partial charges
+#         :return:
+#         """
+#
+#         # generate the new matrices used for the fitting procedure (with constraints)
+#
+#         self._transformed_coeff_matrix = np.zeros(
+#             (self._num_constraints + self.num_atoms, self._num_constraints + self.num_atoms)
+#         )
+#
+#         if self._num_constraints > 0:
+#             self._transformed_coeff_matrix[:self.num_atoms, :self.num_atoms] = self._coeff_matrix.T @ self._coeff_matrix
+#             self._transformed_coeff_matrix[self.num_atoms:, :self.num_atoms] = self._constraint_matrix
+#             self._transformed_coeff_matrix[:self.num_atoms, self.num_atoms:] = self._constraint_matrix.T
+#
+#             self._transformed_target = np.zeros((self.num_atoms + self._num_constraints, 1))
+#             self._transformed_target[:self.num_atoms] = self._coeff_matrix.T @ self._target_vector
+#             self._transformed_target[self.num_atoms:] = self._constraint_target
+#
+#         else:
+#             self._transformed_coeff_matrix = self._coeff_matrix
+#             self._transformed_target = self._target_vector
+#
+#         self._solution, self._residuals, rank, singular_values = lstsq(self._transformed_coeff_matrix,
+#                                                                        self._transformed_target,
+#                                                                        rcond=None)
+#         self._status = 1
+#         return self._solution
+#
+#     def round_post_hoc(self,
+#                        round_places: int = 3,
+#                        timeout: int = 10 * 60):
+#         """
+#         Rounds the assigned partial charges to an arbitrary decimal place
+#         Performs a minmax of the residuals between the rounded values and the original
+#         :return: <np.array> containing the assigned charges ordered by internal atom index
+#         """
+#         self._solution_round = np.zeros((self.num_atoms, 1))
+#
+#         roundProblem = pulp.LpProblem('SystemRounding', pulp.LpMinimize)
+#
+#         ### Variables
+#         atoms_vars = pulp.LpVariable.dicts('', range(self.num_atoms), lowBound=-(10 ** round_places - 1),
+#                                            upBound=(10 ** round_places - 1), cat='Integer')
+#         abs_vars = pulp.LpVariable.dicts('abs', range(self.num_atoms), lowBound=0)
+#         max_residual = pulp.LpVariable('max_charge', lowBound=0)
+#
+#         ### Constraints
+#
+#         for atom_index_internal in range(self.num_atoms):
+#             # constructing the absolute value variables of each charge
+#             # need powers of 10 as setup rounded values variables as integers with units of 10^-(round_places)
+#             roundProblem += abs_vars[atom_index_internal] >= (
+#                     atoms_vars[atom_index_internal] - self._solution[atom_index_internal][0] * 10 ** round_places)
+#             roundProblem += abs_vars[atom_index_internal] >= -(
+#                     atoms_vars[atom_index_internal] - self._solution[atom_index_internal][0] * 10 ** round_places)
+#
+#             # set up constraint to define the maximum residual
+#             roundProblem += max_residual >= abs_vars[atom_index_internal]
+#
+#         # enforcing the existing constraints on the system
+#
+#         # daisy chaining the equivalence (symmetry) groups
+#         for group_name, pairs in self._flat_symmetry_constraints.items():
+#             for p_1, p_2 in zip(pairs[:-1], pairs[1:]):
+#                 roundProblem += atoms_vars[self._index_lookup[p_1]] == atoms_vars[self._index_lookup[p_2]]
+#
+#         for pairs, charge in self._flat_sum_constraints:
+#             roundProblem += sum(atoms_vars[self._index_lookup[p]] for p in pairs) == charge
+#
+#         # Set the objective as minimising the maximum residual
+#         roundProblem += max_residual
+#
+#         solver = pulp.apis.PULP_CBC_CMD(
+#             maxSeconds=timeout,
+#             threads=4,
+#             timeMode="cpu")
+#
+#         status = roundProblem.solve(solver=solver)
+#
+#         if roundProblem.status != 1:
+#             print('ILP rounding failure')
+#             raise Exception  # todo make own exception
+#
+#         # slice notation means this line will throw an error if vectors are incorrectly sized
+#         # as it will attempt to broadcast the values rather than overwrite the variable
+#         self._solution_round[:] = np.array([pulp.value(a) for a in atoms_vars.values()]).reshape(-1,
+#                                                                                                  1) * 10 ** -round_places
+#
+#     def transfer_partial_charges(self):
+#         """
+#         Function to transfer the calculated partial charges into the Molecule3D partial charge property
+#         """
+#         if self._status != 1:
+#             print('system not yet fitted')
+#             raise Exception  # todo make a new exception
+#
+#         for molecule in self.molecules:
+#             for atom_internal_index in range(molecule.num_atoms):
+#                 molecule.atom_objects[atom_internal_index].partial_charge = \
+#                     self._solution[self._index_lookup[molecule, atom_internal_index]][0]

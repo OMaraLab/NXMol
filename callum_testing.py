@@ -28,6 +28,8 @@ flat_sym = {f'g_{jj}': tuple(((mol1, mol1.atom_objects[jj]),
                               (mol2, mol2.atom_objects[jj])))
             for jj in range(mol1.num_atoms)}
 
+flat_sym_failtest = {key: val for key, val in list(flat_sym.items())[:-1]}
+
 _lsq_charge_fit(molecules=[mol1],
                 flat_symmetry_constraints=flat_sym,
                 molecules_infer=[mol2])
