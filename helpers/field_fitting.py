@@ -522,10 +522,10 @@ def partial_charge_fit(molecules: Sequence[Molecule3D],
     if total_charge_constraint is not None:
         if sum_constraints is None:
             sum_constraints = {}
-        for mol_obj, charge_target in enumerate(total_charge_constraint.items()):
+        for mol_obj, charge_target in total_charge_constraint.items():
             sum_constraints[('total_charge', mol_obj)] = {'pairs':
                 tuple(
-                    (molecule, atom_obj) for atom_obj in molecule.atom_objects
+                    (mol_obj, atom_obj) for atom_obj in mol_obj.atom_objects
                 ),
                 'charge': charge_target
             }

@@ -5,7 +5,6 @@ import pickle as pk
 
 from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D, GAMESS_to_Molecule3D
 from chemistry_data_structure.tools import gen_tautomer_trans_structure_2D, get_start_and_end_structures
-from chemistry_data_structure.helpers.field_fitting import MoleculeFieldFitter
 
 
 class TransitionStructureTest(unittest.TestCase):
@@ -125,7 +124,10 @@ class ChemObjectTests(unittest.TestCase):
         self.assertEqual(mol.get_rings(), [('C8', 'N3', 'C7', 'C6', 'C5', 'C4')])
 
 
-class MultiFitterTests(unittest.TestCase):
+class FieldFitTests(unittest.TestCase):
+
+    from chemistry_data_structure.helpers.field_fitting import partial_charge_fit
+
     molecules = [GAMESS_to_Molecule3D(open(path).read()) for path in
                  [f'data/qm/{molid}/wB97X_631Gd_SMD_water.out' for molid in [939674, 939678, 939684, 1162430]]]
 
@@ -138,7 +140,7 @@ class MultiFitterTests(unittest.TestCase):
 
     ### validating the single molecule fitting is operating correctly
     for m, ref in zip(molecules, reference_data):
-        m.setfitPartialCharges()
+        partial_charge_fit([m], {m: 0}, verbose=verbose)
         if verbose:
             print(f'\n\n\nff: {list(ref["fits"].values())[0]["rmsd"][0]}\npy: {m.partialChargeRMSD()}')
             print('Atom Name\tff charge\tpython charge\tresid')
@@ -154,18 +156,6 @@ class MultiFitterTests(unittest.TestCase):
                 )
                       )
 
-    fitter = MoleculeFieldFitter(molecules)
-    # attempting the fit without constraints (but with the total charge since all the reference data ahs that
-    fitter.generate_matrices()
-    fitter.load_constraints(
-        symmetry_constraints={},
-        sum_constraints=[{'atoms':
-                              {molecule: list(range(molecule.num_atoms))},
-                          'value': 0.0}
-                         for molecule in molecules]
-    )
-    fitter.fit()
-    fitter.transfer_partial_charges()
 
     for m, ref in zip(molecules, reference_data):
         if verbose:
@@ -182,11 +172,6 @@ class MultiFitterTests(unittest.TestCase):
                     abs(m.get_atom(atb_name).partial_charge - float(ref_charge))
                 )
                       )
-
-    ## get the atoms into the correct format
-
-    for mol_iter in range(4):
-        pass
 
 
 if __name__ == '__main__':
