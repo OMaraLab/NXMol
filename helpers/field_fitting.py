@@ -6,7 +6,6 @@ from numpy.linalg import lstsq
 from scipy.spatial import distance_matrix
 from typing import Optional, Any, Union, Sequence
 import sys
-import warnings
 
 try:
     import gurobipy as gp
@@ -593,7 +592,7 @@ def _gurobi_post_hoc_round(molecules: Sequence[Molecule3D],
     # implement the given constraints in the model
     gb_symmetry_constraints, gb_sum_constraints = _gurobi_attach_constraints(
         model=model,
-        atom_vars=toms_vars,
+        atom_vars=atoms_vars,
         sum_target_scale=sum_target_scale,
         flat_symmetry_constraints=flat_symmetry_constraints,
         flat_sum_constraints=flat_sum_constraints
@@ -691,7 +690,7 @@ def _pulp_post_hoc_round(molecules: Sequence[Molecule3D],
     # assign the appropriate coefficients using the daisy chain approach
     for group_name, flattened_group in flat_symmetry_constraints.items():
         for mol_atom_pair_1, mol_atom_pair_2 in zip(flattened_group[:-1], flattened_group[1:]):
-            roundProblem += atom_vars[mol_atom_pair_1] == atoms_vars[mol_atom_pair_2]
+            roundProblem += atoms_vars[mol_atom_pair_1] == atoms_vars[mol_atom_pair_2]
 
     # iterate over the sum constraints, using similar methods for looking up indices
     for group_name, flattened_group in flat_sum_constraints.items():
