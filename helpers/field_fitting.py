@@ -25,7 +25,9 @@ from chemistry_data_structure.objects.atom_bond import Atom3D
 # unions allow the constraints to be named or not when creating them
 SYMMETRY_TYPING = Union[list[dict[Any, list[Any]]], dict[Any, dict[Any, list[Any]]]]
 SUM_TYPING = Any  # todo this is a bit of a mess, will work out later
-FLAT_SYMMETRY = dict[str, list[tuple[Molecule3D, Atom3D]]]
+FLAT_SYMMETRY = dict[Any,
+                     tuple[tuple[Molecule3D, Any], ...]
+]
 FLAT_SUM = dict[str,
                 dict[str,
                      Union[tuple[tuple[Molecule3D, Any], ...], float]
@@ -114,8 +116,7 @@ def _generate_constraint_matrices(index_lookup: dict,
 
     # number of atoms involved in symmetry constraints
     num_symmetry_atoms = sum(
-        sum(len(pairs) for pairs in group_dict['pairs'])
-        for group_dict in flat_symmetry_constraints.values()
+        len(pairs) for pairs in flat_symmetry_constraints.values()
     )
 
     num_atoms = len(index_lookup)
@@ -245,11 +246,11 @@ def flatten_symmetry(molecules: list[Molecule3D],
 
     for group_name, group_dict in symmetry_groups.items():
         # flatten out the groups into key,val pair
-        flattened_group = [
+        flattened_group = tuple(
             (molecule_map[molecule_id],
              molecule_map[molecule_id].get_atom(atom_index, index_type=index_type))
             for molecule_id, atom_list in group_dict.items()
-            for atom_index in atom_list]
+            for atom_index in atom_list)
 
         flat_symmetry_constraints[group_name] = flattened_group
     return flat_symmetry_constraints
@@ -291,37 +292,6 @@ def flatten_sum(molecules: list[Molecule3D],
         flat_sum_constraints[group_name] = flattened_group
 
     return flat_sum_constraints
-
-
-def lsq_partial_charge_fit(molecule: Molecule3D,
-                           total_charge_constraint: Union[int, None],
-                           symmetry_constraints=None,
-                           sum_constraints=None,
-                           ):
-    """
-    Fitting partial charges to single molecule
-    Force the flattening as the functions exist to do it now
-    """
-    # if total_charge_constraint and sum_constraints:
-    #     warnings.warn("Warning, sum constraints have been provided and total_charge_constraint is set to True. "
-    #                   "To suppress this warning incorporate the total charge constraints into sum_constraints")
-
-    if total_charge_constraint is not None:
-        if sum_constraints is None:
-            sum_constraints = {}
-        sum_constraints['total_charge'] = {'pairs':
-            tuple(
-                (molecule, atom_obj) for atom_obj in molecule.atom_objects
-            ),
-            'charge': total_charge_constraint
-        }
-
-    solution, residuals, rank, singular_values = _lsq_charge_fit([molecule],
-                                                                 symmetry_constraints,
-                                                                 sum_constraints)
-    # assign the partial charges directly to the atoms
-
-    return solution
 
 
 def _gurobi_attach_constraints(model: 'gp.Model',
@@ -452,6 +422,80 @@ def _gurobi_charge_fit(molecules: list[Molecule3D],
         for key in index_lookup.keys():
             key[1].partial_charge = atoms_vars[key].x
 
+    return
+
+
+def partial_charge_fit(molecules: list[Molecule3D],
+                       total_charge_constraint: Optional[dict[Molecule3D, Union[int, None]]],
+                       symmetry_constraints: object = None,
+                       sum_constraints: object = None,
+                       verbose: bool = False,
+                       method: object = 'lstsq',
+                       round_places: Optional[int] = None
+                       ) -> None:
+    """
+    Top level function for assigning atomic partial charges to Molecule3D objects. Partial charges are assigned to
+    the given molecule objects not returned.
+
+    *Methods*
+    Methods are passed as string to `method`
+    * *lstq* - Least squares method
+    * *grb* - Gurobi Quadratic solver method
+    * *grb-round* Gurobi Quadratic solver method with simultaneous rounded charge optimisation, requires round_places
+    argument
+
+        :param molecules: List of molecule objects to be fitted
+        :param total_charge_constraint: Dictionary of total charge targets for each molecule, symmetry constraints are
+        then generated and added to `sum_constraints`
+        :param symmetry_constraints: flattened symmetry constraint configurations
+        :param sum_constraints: flattened sum constraint configuration
+        :param verbose: Fitting process flag for ILP methods
+        :param method: method for assigning the partial charges
+        :param round_places: decimal places to round charges to using method 'grb-round'
+        :rtype: None
+        :return: None
+
+
+    """
+    if round_places and method != 'grb-round':
+        raise ValueError(f"round_places={round_places} given but method is not compatible with method '{method}'")
+
+    methods = ('lstq', 'grb', 'grb-round')
+    if method not in methods:
+        raise ValueError(f"Unknown method '{method}', options are {methods}")
+
+    if total_charge_constraint is not None:
+        if sum_constraints is None:
+            sum_constraints = {}
+        for mol_obj, charge_target in enumerate(total_charge_constraint.items()):
+            sum_constraints[('total_charge', mol_obj)] = {'pairs':
+                tuple(
+                    (molecule, atom_obj) for atom_obj in molecule.atom_objects
+                ),
+                'charge': charge_target
+            }
+
+    if method == 'lstsq':
+
+        solution, residuals, rank, singular_values = _lsq_charge_fit(molecules,
+                                                                     symmetry_constraints,
+                                                                     sum_constraints)
+    elif method == 'grb':
+        _gurobi_charge_fit(molecules=molecules,
+                           flat_symmetry_constraints=symmetry_constraints,
+                           flat_sum_constraints=sum_constraints,
+                           verbose=verbose,
+                           round_places=None
+                           )
+    elif method == 'grb-round':
+        _gurobi_charge_fit(molecules=molecules,
+                           flat_symmetry_constraints=symmetry_constraints,
+                           flat_sum_constraints=sum_constraints,
+                           verbose=verbose,
+                           round_places=round_places
+                           )
+
+    # return solution
     return
 
 
@@ -648,11 +692,11 @@ class MoleculeFieldFitter:
         self._residuals: np.array = None
 
         # constraints
-        self._flat_symmetry_constraints: dict = None
-        self._flat_sum_constraints: list[tuple[tuple[Molecule3D, list[int]], float]] = None
+        self._flat_symmetry_constraints: FLAT_SYMMETRY = {}
+        self._flat_sum_constraints: FLAT_SUM = {}
 
-        self._index_lookup: dict = {}
-        self._index_backlookup: dict = {}
+        self._index_lookup: dict[tuple[Molecule3D, Atom3D], int] = {}
+        self._index_backlookup: dict[int, tuple[Molecule3D, Atom3D]] = {}
 
     @property
     def status(self):
@@ -675,6 +719,10 @@ class MoleculeFieldFitter:
         return self._flat_symmetry_constraints
 
     def add_molecule(self, molecule: Molecule3D):
+        """
+
+        :param molecule:
+        """
         if not isinstance(molecule, Molecule3D):
             raise TypeError('molecule must be of type Molecule3D')
         # TODO: can currently add the same molecule more than once, need to check if this is intended behaviour
