@@ -1,7 +1,8 @@
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.parsing.input_parsers import GAMESS_to_Molecule3D
-from chemistry_data_structure.helpers.field_fitting import MoleculeFieldFitter,\
-    partial_charge_fit, _gurobi_charge_fit, _gurobi_post_hoc_round, _pulp_post_hoc_round, post_hoc_charge_round
+from chemistry_data_structure.helpers.field_fitting import MoleculeFieldFitter, \
+    partial_charge_fit, _gurobi_charge_fit, _gurobi_post_hoc_round, _pulp_post_hoc_round, post_hoc_charge_round, \
+    _lsq_charge_fit
 
 # from esp_analysis.ff_output_analysis import
 
@@ -16,27 +17,32 @@ paths = [
 molecules = [GAMESS_to_Molecule3D(open(path).read()) for path in paths]
 
 m = molecules[0]
-# lsq_partial_charge_fit(m, 0)
-# print('###1 molecule raw fit###')
-# _gurobi_charge_fit([m], verbose=True)
-# print('###1 molecule with total charge###')
-# _gurobi_charge_fit([m], verbose=True,
-#                    flat_sum_constraints = {'tot_charge':
-#                                                {'pairs':tuple((m, atom_obj) for atom_obj in m.atom_objects),
-#                                                 'charge': 0.0}
-#                                            })
-# print('###all molecules raw fit###')
+
+### validating the charge inference model. Basic case
+
+test_mols = [GAMESS_to_Molecule3D(open(paths[0]).read()), GAMESS_to_Molecule3D(open(paths[0]).read())]
+mol1 = test_mols[0]
+mol2 = test_mols[1]
+
+flat_sym = {f'g_{jj}': tuple(((mol1, mol1.atom_objects[jj]),
+                              (mol2, mol2.atom_objects[jj])))
+            for jj in range(mol1.num_atoms)}
+
+_lsq_charge_fit(molecules=[mol1],
+                flat_symmetry_constraints=flat_sym,
+                molecules_infer=[mol2])
+
 # _gurobi_charge_fit(molecules, verbose=True)
 partial_charge_fit(m, 0)
-asd = [round(a.partial_charge,5) for a in m.atom_objects]
+asd = [round(a.partial_charge, 5) for a in m.atom_objects]
 print('###\n\nROUNDING\n\n###')
 # _gurobi_post_hoc_round(molecules, verbose=True, round_places=3)
 post_hoc_charge_round([m], verbose=True,
-                     round_places=3,
-                     flat_sum_constraints = {'tot_charge':
-                                                 {'pairs':tuple((m, atom_obj) for atom_obj in m.atom_objects),
-                                                                     'charge': 0.0}
-                                                                },
+                      round_places=3,
+                      flat_sum_constraints={'tot_charge':
+                                                {'pairs': tuple((m, atom_obj) for atom_obj in m.atom_objects),
+                                                 'charge': 0.0}
+                                            },
                       engine='pulp')
 asd2 = [a.partial_charge for a in m.atom_objects]
 print(asd2, sum(asd2))
@@ -68,7 +74,6 @@ print(asd, sum(asd2))
 # import os
 
 
-
 # import cProfile
 # import pstats
 # from random import randint, seed
@@ -81,4 +86,3 @@ print(asd, sum(asd2))
 # profiler.disable()
 # stats = pstats.Stats(profiler).sort_stats('cumtime')
 # stats.print_stats()
-

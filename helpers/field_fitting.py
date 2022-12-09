@@ -57,7 +57,19 @@ def _lsq_components(molecule: Molecule3D) -> tuple[np.array, np.array]:
     return A, b
 
 
-def _generate_lsq_matrices(molecules: Sequence[Molecule3D]
+def _lsq_components_infer(molecule: Molecule3D) -> tuple[np.array, np.array]:
+    """
+    Method for generating matrices that allow the incorporation of molecules with no esp grid
+    :param molecule:
+    :return: placeholder arrays that will be compatible with the current matrix setups, and allow for the inclusion of
+    constraints on the included molcules
+    """
+    # todo this could be incorporated into the above but I want to force users/myself to treat them separately
+    return np.zeros((0, molecule.num_atoms)), np.zeros((0, 1))
+
+
+def _generate_lsq_matrices(molecules: Sequence[Molecule3D],
+                           molecules_infer: Optional[Sequence[Molecule3D]] = None
                            ) -> tuple[dict, dict, np.array, np.array]:
     """
     generic function for generating the internal coefficient matrices for a molecule system, and the index lookups capable of
@@ -67,7 +79,16 @@ def _generate_lsq_matrices(molecules: Sequence[Molecule3D]
 
     """
     # separate out the individual esp and coefficient matrix data
-    single_coeffs, single_esps = zip(*[_lsq_components(molecule) for molecule in molecules])
+
+    if molecules_infer is None:
+        molecules_infer = []
+
+    single_coeffs, single_esps = zip(*(
+            [_lsq_components(molecule) for molecule in molecules] +
+            [_lsq_components_infer(molecule) for molecule in molecules_infer]
+    ))
+    molecules = molecules
+
     index_lookup = {}
     index_backlookup = {}
 
@@ -81,9 +102,12 @@ def _generate_lsq_matrices(molecules: Sequence[Molecule3D]
 
     # iteratively populate the diagonals of the coefficient matrix with the individual matrices
     # and iteratively fill the full target esp values, since numpy doesn't natively support ragged shapes
+    # todo: don't like this double iteration
     row_count = 0
     col_count = 0
-    for mol_index in range(len(molecules)):
+
+    mol_seq = [*molecules, *molecules_infer]
+    for mol_index in range(len(mol_seq)):
         shape = single_coeffs[mol_index].shape
 
         coeff_matrix[row_count:row_count + shape[0],
@@ -97,12 +121,12 @@ def _generate_lsq_matrices(molecules: Sequence[Molecule3D]
         # iterate over the atom indexes (which are not always super consistent)
         # currently use the atom objects as indexes to remove any ambiguity
         # todo need to write a sanity check in the unit tests that confirms this
-        for molecule_col_iter, atom_obj in enumerate(molecules[mol_index].atom_objects):
+        for molecule_col_iter, atom_obj in enumerate(mol_seq[mol_index].atom_objects):
             index_lookup[
-                molecules[mol_index], atom_obj
+                mol_seq[mol_index], atom_obj
             ] = col_count + molecule_col_iter
 
-            index_backlookup[col_count + molecule_col_iter] = (molecules[mol_index], atom_obj)
+            index_backlookup[col_count + molecule_col_iter] = (mol_seq[mol_index], atom_obj)
 
         row_count += shape[0]
         col_count += shape[1]
@@ -192,7 +216,8 @@ def _generate_transformed_lsq(coeff_matrix: np.array,
 
 def _lsq_charge_fit(molecules: Sequence[Molecule3D],
                     flat_symmetry_constraints: FLAT_SYMMETRY = None,
-                    flat_sum_constraints: FLAT_SUM = None
+                    flat_sum_constraints: FLAT_SUM = None,
+                    molecules_infer: Optional[Sequence[Molecule3D]] = None
                     ) -> np.array:
     """
     Internal function for performing the fitting process and setting up the constraint matrices based off the molecules
@@ -200,20 +225,32 @@ def _lsq_charge_fit(molecules: Sequence[Molecule3D],
     """
     # todo, need to decide if want to switch between assigning partial charges directly, or having the option to
     #  output as a dictionary lookup
+    # todo: currently implemented as forcing full coverage of molecules as the current method will assign them something
+    #  or may result in failing/non full rank matrices
 
     if flat_symmetry_constraints is None:
         flat_symmetry_constraints = {}
     if flat_sum_constraints is None:
         flat_sum_constraints = {}
+    if molecules_infer is None:
+        molecules_infer = tuple()
 
-    index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules)
+    index_lookup, index_backlookup, coeff_matrix, esp_vector = _generate_lsq_matrices(molecules=molecules,
+                                                                                      molecules_infer=molecules_infer)
     constraint_matrix, constraint_target = _generate_constraint_matrices(index_lookup,
                                                                          flat_symmetry_constraints,
                                                                          flat_sum_constraints)
+
     transformed_coeff_matrix, transformed_target = _generate_transformed_lsq(coeff_matrix,
                                                                              esp_vector,
                                                                              constraint_matrix,
                                                                              constraint_target)
+
+    assert np.linalg.matrix_rank(transformed_coeff_matrix) ==\
+           transformed_target.shape[0], 'matrix is not full rank. If using inferred charge generation this can ' \
+                                                                                           'result from not fully ' \
+                                                                                           'covering the new molecules '
+
     solution, residuals, rank, singular_values = lstsq(transformed_coeff_matrix,
                                                        transformed_target,
                                                        rcond=None)
@@ -441,7 +478,8 @@ def partial_charge_fit(molecules: Sequence[Molecule3D],
                        sum_constraints: FLAT_SUM = None,
                        verbose: bool = False,
                        method: str = 'lstsq',
-                       round_places: Optional[int] = None
+                       round_places: Optional[int] = None,
+                       molecules_infer: Optional[Sequence[Molecule3D]] = None
                        ) -> None:
     """
 
@@ -464,6 +502,7 @@ def partial_charge_fit(molecules: Sequence[Molecule3D],
         :param verbose: Fitting process flag for ILP methods
         :param method: method for assigning the partial charges, see above
         :param round_places: decimal places to round charges to using method 'grb-round'
+        :param molecules_infer: Sequence of molecule objects to be fitted, via coverage of constraints
         :rtype: None
         :return: None
 
@@ -717,25 +756,6 @@ def _symmetry_constraint_charge(flat_symmetry_constraints=FLAT_SYMMETRY,
     return {
         group_name: pairs[0][1].partial_charge for group_name, pairs in flat_symmetry_constraints.items()
     }
-
-
-# def _inference_charge_transfer(field_molecules: Sequence[Molecule3D],
-#                                infer_molecules: Sequence[Molecule3D],
-#                                flat_symmetry_constraints=FLAT_SYMMETRY,
-#                                flat_sum_constraints=FLAT_SUM,
-#                                assert_coverage: bool = True
-#                                ):
-#     # think this function will assume the fitting has already taken place, and will just act as a method to transfer
-#     # charges using the available constraint information
-#
-#     # there would be a faster way to set this up by separating out the infered and field molecules but
-#     # if this is the only iteration then probable doesn't matter.
-#     # although would need to filter it before the lsq matrix generation or it might fall over
-#
-#     for group_name, pairs in flat_symmetry_constraints.items():
-#
-#
-#     return
 
 
 class MoleculeFieldFitter:
