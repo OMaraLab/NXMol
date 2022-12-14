@@ -82,7 +82,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         distance_pairs = distance_matrix(self._esp_grid_coords, self.atom_coord_matrix)
         # atom coords read in as BOHR, might just convert this to Metres
         A = 1 / distance_pairs  # don't need constant in a.u.
-        b = molecule._esp_grid_charge.reshape(-1, 1)
+        b = self._esp_grid_charge.reshape(-1, 1)
         partialChargeVector = np.array([a.partial_charge for a in self.atom_objects]).reshape(-1, 1)
         return np.sqrt(1 / self.num_atoms * sum((A @ partialChargeVector - b) ** 2))
 
