@@ -56,6 +56,14 @@ class _2DChemicalObj:
 
         # other properties
 
+    # def __repr__(self):
+    #     return f'{type(self).__name__}: {self.chemical_formula}'
+    #
+    # @property
+    # def chemical_formula(self):
+    #     elements = [a.element for a in self.atom_objects]
+    #     return ''.join(f'{e}{elements.count(e)}' for e in list(set(elements)))
+
     @property
     def atoms(self):
         # TODO: we should modify this to be atom_ids, just need to refactor
@@ -125,6 +133,10 @@ class _2DChemicalObj:
     # def graph(self, value):
     #     self._graph = value
 
+    # def __repr__(self):
+        # I've got a fun idea coming for this one
+        # https://github.com/vfscalfani/teletype_mols/blob/main/rdkit_print_mol_ascii.ipynb
+
     def add_atom(self, atom: Atom2D) -> None:
         if not isinstance(atom, Atom2D): # not sure if we actually want to add atoms this way
             # might make it  easier to enforce minimum information
@@ -152,6 +164,7 @@ class _2DChemicalObj:
             return self._graph.nodes[index]
         else:
             return [a for a in self._graph._node.values() if a._index[index_type] == index][0]
+            # return next((d for d in self._graph._node.values() if d[index_type] == index), None)
 
     def get_atoms(self, index: List, index_type='name'):
         """
@@ -164,6 +177,8 @@ class _2DChemicalObj:
             return [self._graph.nodes[i] for i in index]
         else:
             return [[a for a in self._graph._node.values() if a._index[index_type]==i][0] for i in index]
+            # return [next((d for d in self._graph._node.values() if d[index_type] == i), None)
+            #         for i in index]
 
     def get_heavy_atoms(self):
         """
