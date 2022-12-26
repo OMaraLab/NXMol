@@ -1,19 +1,30 @@
+from functools import reduce
 from sys import stderr
 
 import networkx as nx
-from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable
+from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet
 
 import pulp
 import numpy as np
 from matplotlib import pyplot as plt
 
-from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS
+from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
+    AROMATIC_BOND_ORDER
 from chemistry_data_structure.helpers.io import write_to_debug
+from chemistry_data_structure.helpers.rings import bonds_for_ring
 from chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D, _Bond, _Atom
 from chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
 
-# TODO: might rework this to replace the factory classes for proper integration
-ELEMENT_COLOURS = {'H': '#eeeeee', 'C': 'grey', 'O': '#ff91a4', 'N': '#5dabf5'}
+ELEMENT_COLOURS = {'H': '#eeeeee',
+                   'C': 'grey',
+                   'O': '#ff91a4',
+                   'N': '#5dabf5',
+                   'S': '#b7b70f',
+                   'P': 'orange',
+                   'F': 'green',
+                   'CL': 'purple',
+                   'BR': 'pink',
+                   'SI': 'yellow'}
 
 class _2DChemicalObj:
     """
@@ -63,6 +74,10 @@ class _2DChemicalObj:
         return self.graph.edges
 
     @property
+    def rings(self):
+        return list(map(tuple, nx.cycle_basis(self.graph)))
+
+    @property
     def bond_objects(self):
         return list(self.graph.edges.values())
 
@@ -85,6 +100,26 @@ class _2DChemicalObj:
     @property
     def non_bonded_electrons(self):
         return {atom_id: self.get_atom(atom_id).non_bonded_electrons for atom_id in self.atoms}
+
+    @property
+    def hybridisations(self):
+        return {atom_id: self.get_atom(atom_id).hybridisation for atom_id in self.atoms}
+
+    @property
+    def atom_conjugations(self):
+        return {atom_id: self.get_atom(atom_id).is_conjugated for atom_id in self.atoms}
+
+    @property
+    def valences(self):
+        return {atom_id: self.get_atom(atom_id).valence for atom_id in self.atoms}
+
+    @property
+    def neighbour_counts(self):
+        return {atom_id: len([x for x in self.graph.neighbors(atom_id)]) for atom_id in self.atoms}
+
+    @property
+    def first_neighbours(self):
+        return {atom_id: [x for x in self.graph.neighbors(atom_id)] for atom_id in self.atoms}
 
     # @graph.setter
     # def graph(self, value):
@@ -150,6 +185,34 @@ class _2DChemicalObj:
         """
         return {atom_id: self.formal_charges[atom_id] for atom_id in index}
 
+    def get_non_bonded_electrons(self, index: Iterable[str]):
+        """
+        Get the non-bonded electrons for a specified list of atoms. Uses atom name indexing.
+        :return:
+        """
+        return {atom_id: self.non_bonded_electrons[atom_id] for atom_id in index}
+
+    def get_hybridisations(self, index: Iterable[str]):
+        """
+        Get the hybridisations for a specified list of atoms. Uses atom name indexing.
+        :return:
+        """
+        return {atom_id: self.hybridisations[atom_id] for atom_id in index}
+
+    def get_valences(self, index: Iterable[str]):
+        """
+        Get the valences for a specified list of atoms. Uses atom name indexing.
+        :return:
+        """
+        return {atom_id: self.valences[atom_id] for atom_id in index}
+
+    def get_conjugations(self, index: Iterable[str]):
+        """
+        Get the conjugation status for a specified list of atoms. Uses atom name indexing.
+        :return:
+        """
+        return {atom_id: self.atom_conjugations[atom_id] for atom_id in index}
+
     def get_bond_orders(self, index: Iterable[Tuple[str]]):
         """
         Get the bond orders for a specified list of bonds. Uses atom name indexing.
@@ -183,12 +246,20 @@ class _2DChemicalObj:
                    fixed_heavy_atoms: dict = None,
                    backbone_only: bool = False,
                    show: bool = True,
-                   save_fp: str = None):
+                   save_fp: str = None,
+                   font_sizes: dict = None,
+                   offsets: tuple = None,
+                   draw_formal_charges: bool = True,
+                   draw_atom_ids: bool = True):
         """
         Draws the molecular graph in kamada kawai layout.
         :param show: if true, show plot, otherwise don't
         :param save_name: if specified, save the png to the given fp.
         """
+        node_font_sz, edge_font_sz, charge_font_sz = font_sizes['node'] if font_sizes else 14, \
+                                                     font_sizes['edge'] if font_sizes else 12, \
+                                                     font_sizes['label'] if font_sizes else 14
+
 
         if backbone_only:
             graph = self.get_backbone_graph()
@@ -201,34 +272,42 @@ class _2DChemicalObj:
 
         # create colour map of element colours
         colour_map = []
-        for atom_name in graph.nodes():
-            colour_map.append(ELEMENT_COLOURS[atom_name.strip("0123456789")])
+        for atom in graph.nodes.values():
+            colour_map.append(ELEMENT_COLOURS[atom.element.strip("0123456789").upper()])
 
         # setup layouts
+        kamada_kawai = False
         if fixed_heavy_atoms is not None:
             pos = nx.spring_layout(graph, pos=fixed_heavy_atoms, fixed=fixed_heavy_atoms.keys())
         else:
-            pos = nx.spring_layout(graph)
+            kamada_kawai = True
+            pos = nx.kamada_kawai_layout(graph)
 
         #pos = nx.spring_layout(self._graph)
-        if backbone_only:
-            offset_pos = {k: (v[0] + 0.5, v[1] + 0.15) for k, v in pos.items()}
-        else:
-            offset_pos = {k: (v[0] + 0.65, v[1] + 0.2) for k, v in pos.items()}
+        if offsets is None:
+            if backbone_only:
+                offsets = (0.5, 0.15)
+            else:
+                offsets = (0.65, 0.2)
+        offset_pos = {k: (v[0] + offsets[0], v[1] + offsets[1]) for k, v in pos.items()}
 
+        # override if kamada kawai
+        if kamada_kawai:
+            offset_pos = {k: (v[0] + 0.06, v[1] + 0.05) for k, v in pos.items()}
 
         # draw graph, with node and edge labels
-        plt.cla()
-        nx.draw(graph, pos=pos, with_labels=True, font_size=10,
-                font_color='black', node_color=colour_map, node_size=500, edge_color='black')
+        fig = plt.figure(figsize=(6, 5), dpi=600)
+        nx.draw(graph, pos=pos, with_labels=draw_atom_ids, font_size=node_font_sz,
+                font_color='black', node_color=colour_map, node_size=600, edge_color='black')
         node_path_coll = plt.gca().collections[0]
         node_path_coll.set_edgecolor("#afafaf")
         node_path_coll.set_lw(2)
         edge_path_coll = plt.gca().collections[1]
         edge_path_coll.set_lw(1.5)
-        nx.draw_networkx_labels(graph, offset_pos, formal_charges,
-                                font_color='red', font_size=10)
-        nx.draw_networkx_edge_labels(graph, pos, bond_orders)
+        if draw_formal_charges:
+            nx.draw_networkx_labels(graph, offset_pos, formal_charges,
+                                    font_color='red', font_size=edge_font_sz)
+        nx.draw_networkx_edge_labels(graph, pos, bond_orders, font_size=charge_font_sz)
 
         if backbone_only:
             plt.margins(x=0.2, y=0.2)
@@ -238,10 +317,11 @@ class _2DChemicalObj:
         # optionally show or save molecular graph
         if show:
             plt.show()
+        else:
+            if save_fp is not None:
+                plt.savefig(save_fp, format='png')
             plt.cla()
-        if save_fp is not None:
-            plt.savefig(save_fp, format='png')
-            plt.cla()
+            plt.close()
 
     def get_graph_adj_mat(self, as_numpy: bool = True):
         """
@@ -254,7 +334,7 @@ class _2DChemicalObj:
         else:
             return adj.tolist()
 
-    def get_neighbour_counts(self, element: str):
+    def get_neighbour_element_counts(self, element: str):
         """
         Returns a dictionary of {atom:count} where count is the number of neighbouring
         atoms of the given element.
@@ -316,10 +396,8 @@ class _2DChemicalObj:
 
         problem = LpProblem("Lewis problem (bond order and charge assignment)", LpMinimize)
 
-        # TODO: Make bonds have numerical indices as well...
-
         non_allene_atoms = {}
-        for atom in self.atoms.values():
+        for atom in self.atom_objects:
             if disallow_allenes_completely:
                 atom_bonds = [bond for bond in self.bonds if atom.get_index() in bond]
                 if atom.element == 'C' and len(atom_bonds) == 2:
@@ -330,7 +408,7 @@ class _2DChemicalObj:
         # formal charges of atoms
         charges = {
             atom.get_index(): LpVariable("C_{i}".format(i=atom.get_index()), -MAX_ABSOLUTE_CHARGE, MAX_ABSOLUTE_CHARGE, LpInteger)
-            for atom in self.atoms.values()
+            for atom in self.atom_objects
         }
 
         # variable to bind absolute values of charges
@@ -470,14 +548,141 @@ class _2DChemicalObj:
         write_to_debug(debug, 'formal_charges', self.formal_charges)
         write_to_debug(debug, 'non_bonded_electrons', self.non_bonded_electrons)
 
-    def weave_featurize_molecule(self):
+    def assign_aromatic_bonds(self):
         """
-        Create Weave Convultuion featurization of molecule object.
-        This code is sourced from DeepChem, modified for the current data structure.
-        TODO: THIS!
+        Assigns aromatic bonds using huckel rules.
         :return:
         """
-        return
+
+        rings = self.rings
+
+        ring_bonds = {
+            ring: bonds_for_ring(ring)
+            for ring in rings
+        }
+
+        try:
+            ring_bond_orders = {
+                ring: [self.bond_orders[bond] for bond in bonds]
+                for (ring, bonds) in ring_bonds.items()
+            }
+        except KeyError:
+            raise Exception('Please assign bond orders first.')
+
+        neighbour_counts = self.neighbour_counts
+
+        def is_sp2(atom_id: int) -> bool:
+            return neighbour_counts[atom_id] == 3
+
+        def is_hucklel_compatible(bond_orders: List[int]) -> bool:
+            '''
+            Implement the Huckel rule of aromaticity: 4n +2.
+            Source: https://en.wikipedia.org/wiki/Hückel%27s_rule
+            '''
+            return (sum([2 for bond_order in bond_orders if bond_order == 2]) - 2) % 4 == 0
+
+        def is_bond_sequence_aromatic(bond_orders: List[int]) -> bool:
+            '''
+            For even-membered ring, ensure alternance of single and double bonds.
+            '''
+            cyclic_bond_orders = [bond_orders[-1]] + list(bond_orders) + [bond_orders[0]]
+            for pair_of_bond_orders in zip(cyclic_bond_orders, [cyclic_bond_orders[-1]] + cyclic_bond_orders[:-1]):
+                if set(pair_of_bond_orders) == {1, 2}:
+                    continue
+                else:
+                    return False
+            else:
+                return True
+
+        def is_aromatic_ring(ring: List[int]) -> bool:
+            if len(ring) % 2 == 0:
+                # For even-membered rings, ensure alternance of single and double bonds, and ensure Huckel's rule is enforced.
+                return is_bond_sequence_aromatic(ring_bond_orders[ring]) and is_hucklel_compatible(ring_bond_orders[ring])
+            else:
+                # For odd-membered rings, include sp2 (pi electrons) lone pairs, and ensure Huckel's rule is enforced.
+                non_bonded_pairs = reduce(
+                    lambda acc, e: acc + e,
+                    [[2 for _ in range(0, self.non_bonded_electrons[atom_id] // 2)] for atom_id in ring if is_sp2(atom_id)],
+                    [],
+                )
+                return is_hucklel_compatible(ring_bond_orders[ring] + non_bonded_pairs)
+
+        #self.aromatic_bonds = set()
+        # set aromatic flag and bond order in bond objects
+        for ring in rings:
+            if is_aromatic_ring(ring):
+                for a1, a2 in ring_bonds[ring]:
+                    self.get_bond(a1, a2).order = AROMATIC_BOND_ORDER
+                    # TODO: CHECK THIS!!!
+
+    def assign_hybridisations_and_valences(self):
+        """
+        Use valency and non-bonded electron info to assign
+        hybdridisations to each atom.
+        :return:
+        """
+
+        assert all([x is not None for x in self.non_bonded_electrons])
+
+        neighbour_counts = self.neighbour_counts
+
+        for atom in self.atom_objects:
+
+            # assign valences
+            atom.valence = neighbour_counts[atom.get_index()]
+
+            # assign hybirdisations
+            if max(FULL_VALENCES[atom.element.upper()]) > 1:
+                atom.hybridisation = neighbour_counts[atom.get_index()] + self.non_bonded_electrons[atom.get_index()] // 2 - 1
+            else:
+                atom.hybridisation = 0  # monovalent atoms
+
+    def assign_conjugated_atoms(self):
+        """
+        Use hybridisation info of atoms to determine whether given
+        heavy atoms are conjugated or not.
+        :return:
+        """
+
+        assert all([x is not None for x in self.hybridisations])
+        assert all([x is not None for x in self.non_bonded_electrons])
+
+        first_neighbours = self.first_neighbours
+        neighbour_counts = self.neighbour_counts
+
+        conjugated_atoms = {}
+        hybridisation_scores = {}
+        for atom in self.atom_objects:
+
+            num_heavy_atom_neighbours = len([neighbour_id for neighbour_id in first_neighbours[atom.get_index()]
+                                             if self.get_atom(neighbour_id).element != 'H'])
+
+            if num_heavy_atom_neighbours > 1:
+
+                # get normalised hybridisation score:
+                # (sum(hybridisations of atom and its neighbours) - No. Lone Pairs) / Number of atoms involved in calc
+                # this was designed to account for conjugation involving C/N/O as a central atom,
+                # giving a numerical score which has been tested to distinguish between conjugated and non-conjugated atoms
+                hybridisation_sum = sum([self.hybridisations[atom.get_index()]] + [self.hybridisations[neighbour_id]
+                                                                             for neighbour_id in first_neighbours[atom.get_index()]
+                                                                             if max(FULL_VALENCES[self.get_atom(neighbour_id).element.upper()]) > 1])
+
+                num_heavy_atoms_in_calc = (len([neighbour_id
+                                            for neighbour_id in first_neighbours[atom.get_index()]
+                                            if self.get_atom(neighbour_id).element != 'H']) + 1)
+
+                normalised_hybridisation = (hybridisation_sum - self.non_bonded_electrons[atom.get_index()] // 2) / num_heavy_atoms_in_calc
+
+                hybridisation_scores[atom.get_index()] = normalised_hybridisation
+
+                # Conjugation variable CJ = 1 if normalised_hybridisation <= 2.25
+                self.get_atom(atom.get_index()).is_conjugated = 1 if normalised_hybridisation <= 2.25 else 0
+
+            else:
+                self.get_atom(atom.get_index()).is_conjugated = 0
+
+        # print("Norm Hybridisation Scores: ", hybridisation_scores)
+        # print("Conjugated atoms: ", self.conjugated_atoms)
 
 
 class _3DChemicalObj(_2DChemicalObj):

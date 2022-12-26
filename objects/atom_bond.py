@@ -40,8 +40,10 @@ class _Atom:
         self._attributes = {}
 
         # self.name = name
+        self.full_valence = None
         self.valence = None
         self.formal_charge = None
+        self.valence_electrons = None
         self.non_bonded_electrons = None
         self.hybridisation = None
         self.is_aromatic = None
@@ -50,10 +52,15 @@ class _Atom:
         self.radical_electrons = 0
         self.stereo = None
 
+        if 'full_valence' in kwargs:
+            self.valence = kwargs['full_valence']
         if 'valence' in kwargs:
             self.valence = kwargs['valence']
         if 'formal_charge' in kwargs:
             self.formal_charge = kwargs['formal_charge']
+        if 'valence_electrons' in kwargs:
+            assert type(kwargs['valence_electrons']) == int
+            self.valence_electrons = kwargs['valence_electrons']
         if 'non_bonded_electrons' in kwargs:
             self.non_bonded_electrons = kwargs['non_bonded_electrons']
         if 'hybridisation' in kwargs:

@@ -10,7 +10,7 @@ import numpy as np
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
 from chemistry_data_structure.parsing.pdb import bonds_for_pdb_line, is_pdb_connect_line, pdb_atoms_in
-from chemistry_data_structure.helpers.chem import BOHR_PER_ANG, BOHR_PER_NM
+from chemistry_data_structure.helpers.chem import BOHR_PER_ANG, BOHR_PER_NM, FULL_VALENCES, VALENCE_ELECTRONS
 
 
 ############# mol2 Parser
@@ -116,7 +116,9 @@ def pdb_to_Molecule3D(pdb_str: str,
                 index={'pdb': int(pdb_atom.index), 'nid': n_id},
                 name=pdb_atom.name.replace("_", ""),
                 element=pdb_atom.element,
-                coordinates=pdb_atom.coordinates
+                coordinates=pdb_atom.coordinates,
+                full_valence=FULL_VALENCES[pdb_atom.element.upper()],
+                valence_electrons=VALENCE_ELECTRONS[pdb_atom.element.upper()],
             )
         )
         n_id += 1
@@ -151,10 +153,22 @@ def pdb_to_Molecule3D(pdb_str: str,
 
     # assign bond orders and charges with ILP
     if assign_bond_orders_and_charges and net_charge is not None:
-        molecule.assign_bond_orders_and_charges_with_ILP(net_charge)
+        molecule.assign_bond_orders_and_charges_with_ILP(net_charge=net_charge)
 
-    # if assign aromatic bonds
-    # molecule.assign_aromatic_bonds() # TODO: implement this!!!
+    # if assign aromatic bonds, hybridisations, conjugations
+    molecule.assign_aromatic_bonds()
+    molecule.assign_hybridisations_and_valences()
+    molecule.assign_conjugated_atoms()
+
+    # print("Mol Name: ", mol_name)
+    # print("Atoms: ", molecule.atoms)
+    # print("Valences: ", molecule.valences)
+    # print("Non-bonded Electrons: ", molecule.non_bonded_electrons)
+    # print("Hybridisations: ", molecule.hybridisations)
+    # print("Conjugations", molecule.atom_conjugations)
+    # print("Formal Charges: ", molecule.formal_charges)
+    # print("Bonds: ", molecule.bonds)
+    # print("Bond Orders: ", molecule.bond_orders)
 
     return molecule
 
