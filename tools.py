@@ -6,6 +6,7 @@ import copy
 
 from chemistry_data_structure.helpers.chem import VALENCE_ELECTRONS
 from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D
+from chemistry_data_structure.objects.base_objects import _2DChemicalObj
 from chemistry_data_structure.objects.molecular_entity import Molecule2D
 from networkx.algorithms import isomorphism
 

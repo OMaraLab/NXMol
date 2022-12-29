@@ -30,11 +30,11 @@ class _2DChemicalObj:
     """
     Class representing a molecular entity, i.e. with a unique structural connectivity
     represented as a graph and stereo-isomeric form. This object contains a networkx graph to represent
-    te . This can be parsed to numerous common string formats.
+    it. This can be parsed to numerous common string formats.
     """
     def __init__(self,
-                 atoms: List[_Atom] = [],
-                 bonds: List[Union[str, str, _Bond]] = [],
+                 atoms: List[_Atom] = None,
+                 bonds: List[Union[str, str, _Bond]] = None,
                  name: str = ''
                  ):
 
@@ -43,18 +43,31 @@ class _2DChemicalObj:
         # init graph
         self._name = name
         self._graph = nx.Graph()
-        if atoms:
+        if atoms is not None:
             self._graph.add_nodes_from([a.name for a in atoms])
             for a in atoms:
                 self._graph._node[a.name] = a
 
-            if bonds:
+            if bonds is not None:
                 self._graph.add_edges_from([(a1, a2) for a1, a2, _ in bonds])
                 for a1, a2, bond in bonds:
                     self._graph._adj[a1][a2] = bond
                     self._graph._adj[a2][a1] = bond
 
-        # other properties
+        # sub_class entities
+        self._fragments = {}
+        self._conformations = {}
+
+        # molecule properties
+        # TODO: store dictionaries in object for quick access
+
+        # dict of dict of properties for iterative updates
+        # TODO: @Callum I'm sure theres a more class correct way of doing this, do you know?
+        #   i.e. a data structure for storing all class properties that can be iterated through easily
+        #   i'm thinking we can use this when adding/removing atoms and bonds to update other properties
+        #   if we store them explicitly
+        self._properties = {'fragments': self._fragments}
+
 
     # def __repr__(self):
     #     return f'{type(self).__name__}: {self.chemical_formula}'
@@ -63,6 +76,12 @@ class _2DChemicalObj:
     # def chemical_formula(self):
     #     elements = [a.element for a in self.atom_objects]
     #     return ''.join(f'{e}{elements.count(e)}' for e in list(set(elements)))
+
+    # TODO: so with these properties, they are very convenient but actually
+    #   require some loops etc. each time they are called. What would be cool
+    #   is if we can somehow allow all of these properties to be updated
+    #   whenever there is a change in the molecule, and otherwise just
+    #   return the value for that property.
 
     @property
     def atoms(self):
@@ -138,7 +157,8 @@ class _2DChemicalObj:
         # https://github.com/vfscalfani/teletype_mols/blob/main/rdkit_print_mol_ascii.ipynb
 
     def add_atom(self, atom: Atom2D) -> None:
-        if not isinstance(atom, Atom2D): # not sure if we actually want to add atoms this way
+        if not isinstance(atom, Atom2D):
+            # not sure if we actually want to add atoms this way
             # might make it  easier to enforce minimum information
             raise TypeError('atom must be of type Atom2D')
         if atom.name in self._graph.nodes:
@@ -158,6 +178,30 @@ class _2DChemicalObj:
             raise IndexError
 
         self._graph.add_edge(atom1_name, atom2_name, bond)
+
+    def remove_atom(self, index: Any, index_type='name') -> None:
+        """
+        Removes an atom from the molecular graph.
+        :param index: the atom index to remove
+        :param index_type: the type of atom index used for lookup
+        """
+        if index_type == 'name':
+            # use name index
+            self._graph.remove_node(index)
+        else:
+            # account for alternate indexing system
+            for a_id, a in self.atoms.items():
+                if a._index[index_type] == index:
+                    self._graph.remove_node(a_id)
+
+    def remove_atoms(self, indices: set, index_type='name') -> None:
+        """
+        Removes multipl atoms from the molecular graph.
+        :param indices: the set of atom indices to remove
+        :param index_type: the type of atom index used for lookup
+        """
+        for index in indices:
+            self.remove_atom(index, index_type=index_type)
 
     def get_atom(self, index: Any, index_type='name'):
         if index_type == 'name':
@@ -182,7 +226,7 @@ class _2DChemicalObj:
 
     def get_heavy_atoms(self):
         """
-        Returns all heavy atoms of the molecule.
+        Returns all heavy atoms in the molecule.
         """
         return [a for a in self.atoms if self.get_atom(a).element != 'H']
 
@@ -254,7 +298,7 @@ class _2DChemicalObj:
         The returned subgraph view's attributes are linked to the base graph.
         :return: nx.graph
         """
-        heavy_atoms = [a.name for a in self.atoms.values() if a.element != 'H']
+        heavy_atoms = set(a.name for a in self.atoms.values() if a.element != 'H')
         return self.graph.subgraph(heavy_atoms)
 
     def draw_graph(self,
@@ -698,6 +742,33 @@ class _2DChemicalObj:
 
         # print("Norm Hybridisation Scores: ", hybridisation_scores)
         # print("Conjugated atoms: ", self.conjugated_atoms)
+
+    def get_fragments_around_groups(self, groups: set, depth: int) -> graph:
+        """
+        Use a Breadth-First Traversal of the molecular graph around groups of interest
+        and return the molecular fragments covered by the traversal. Useful for analysis
+        of regions of a molecule.
+
+        :param groups:
+        :param depth:
+        :return:
+        """
+
+        # TODO: This!!!
+        return
+
+
+
+    def add_fragment(self, index: str, atom_ids: set):
+        """
+        Adds an indexed fragment as a subgraph view of the molecular graph
+        containing only atoms in the input list. Uses atom names as indices.
+        The returned subgraph view's attributes are linked to the base graph.
+        :return: nx.graph sub-graph view of specified fragment.
+        """
+        fragment = self.graph.subgraph(atom_ids)
+        self._fragments[index] = fragment
+        return fragment
 
 
 class _3DChemicalObj(_2DChemicalObj):

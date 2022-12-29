@@ -97,9 +97,9 @@ def pdb_to_Molecule3D(pdb_str: str,
                       assign_bond_orders_and_charges: bool = False) -> Molecule3D:
     """
     Create a 3D molecular entity from a PDB file.
-    :param pdb_str:
-    :param net_charge:
-    :return:
+    :param pdb_str: a string of the pdb file contents
+    :param net_charge: the net charge of the input molecule
+    :return: Molecule3D as read from the input pdb.
     """
 
     # TODO: assert statements
@@ -155,10 +155,10 @@ def pdb_to_Molecule3D(pdb_str: str,
     if assign_bond_orders_and_charges and net_charge is not None:
         molecule.assign_bond_orders_and_charges_with_ILP(net_charge=net_charge)
 
-    # if assign aromatic bonds, hybridisations, conjugations
-    molecule.assign_aromatic_bonds()
-    molecule.assign_hybridisations_and_valences()
-    molecule.assign_conjugated_atoms()
+        # if assign aromatic bonds, hybridisations, conjugations
+        molecule.assign_aromatic_bonds()
+        molecule.assign_hybridisations_and_valences()
+        molecule.assign_conjugated_atoms()
 
     # print("Mol Name: ", mol_name)
     # print("Atoms: ", molecule.atoms)

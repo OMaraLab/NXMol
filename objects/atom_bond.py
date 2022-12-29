@@ -248,6 +248,13 @@ class _Bond:
     def get(self, *args, **kwargs):
         return self._attributes.get(*args, **kwargs)
 
+    def set_order(self, order: int):
+        # TODO: I don't know if this is what we have in mind, i.e. getters/setters
+        #   or if we want to use a more general method, but i'm writing this for use in the
+        #   short term
+        self.order = order
+
+
 
 class Bond2D(_Bond):
 
