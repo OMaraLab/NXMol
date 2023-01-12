@@ -76,6 +76,12 @@ class _Atom:
         else:
             raise AtomIndexError(f'Id type {id_type} not associated with this atom')
 
+    def set_index(self, id_type: str, value: Any, overwrite: bool = False):
+        if not overwrite:
+            if id_type in self._index:
+                raise AtomIndexError(f'Index {id_type} already exists! specify overwrite=True to overwrite')
+        self._index[id_type] = value
+
     @property
     def name(self):
         """
