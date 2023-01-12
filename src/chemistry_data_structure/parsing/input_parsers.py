@@ -175,8 +175,8 @@ def GAMESS_to_Molecule3D(
     :param mol_name: name of the molecule
     :return: Molecule3D object with the information from the log
     """
-    # todo gamess log has valence information
-    # todo it willl be worth investing in the most efficient way to parse the esp field into numerical data
+    # todo GAMESS log has valence information
+    # todo it will be worth investing in the most efficient way to parse the esp field into numerical data
     # this parser takes ~0.2 seconds might add option to not parse the qm logs
     # mmap may be a solution but there is debate
 
@@ -256,7 +256,9 @@ def GAMESS_to_Molecule3D(
             name=atom_name,
             element=element,
             coordinates=[float(c) * coord_unit_conversion for c in [x, y, z]], # convert from angstrom
-            index={'index': index},
+            index={'index': index,
+                   'GAMESS_index': index,
+                   'GAMESS_name': atom_name},
             formal_charge=float(atomic_charge),  # todo need to check if these are the right charges, also not wokring
             valence=valencies[index]
 

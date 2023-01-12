@@ -2,7 +2,7 @@
 Contains abstract and implemented classes representing atoms and bonds.
 """
 import copy
-from typing import Tuple
+from typing import Tuple, Any
 
 Coordinate = Tuple[float, float, float]
 
