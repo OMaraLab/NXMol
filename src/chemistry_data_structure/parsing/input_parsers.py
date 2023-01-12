@@ -91,6 +91,21 @@ def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
     )
 
 
+def pdb_index_parser(pdb_str: str,
+                      mol_name: str = ""):
+    template_exp = '(?<=[HETATM|ATOM]  )(.*)'
+    # so far these are the only lines we care about exporting
+    parser = re.compile(template_exp)
+    atm_lines = parser.findall(pdb_str)
+    id_map = {}
+    for line in atm_lines:
+        split_line = line.strip().split()
+        GAMESS_id = split_line[0]
+        atom_name = split_line[1]
+        id_map[int(GAMESS_id)] = atom_name
+    return id_map
+
+
 def pdb_to_Molecule3D(pdb_str: str,
                       mol_name: str = "",
                       net_charge: int = None,
@@ -185,7 +200,7 @@ def GAMESS_to_Molecule3D(
     elif units == 'Angs':
         coord_unit_conversion = 1
     else:
-        raise Exception('Unrocognised units')
+        raise Exception('Unrecognised units')
 
     # this locates the equilibrium geometry block
     # need to escape asterixes and newlines in regex
@@ -255,11 +270,11 @@ def GAMESS_to_Molecule3D(
         atoms[index] = Atom3D(
             name=atom_name,
             element=element,
-            coordinates=[float(c) * coord_unit_conversion for c in [x, y, z]], # convert from angstrom
+            coordinates=[float(c) * coord_unit_conversion for c in [x, y, z]],  # convert from angstrom
             index={'index': index,
                    'GAMESS_index': index,
                    'GAMESS_name': atom_name},
-            formal_charge=float(atomic_charge),  # todo need to check if these are the right charges, also not wokring
+            formal_charge=float(atomic_charge),  # todo need to check if these are the right charges, also not working
             valence=valencies[index]
 
         )
@@ -268,10 +283,10 @@ def GAMESS_to_Molecule3D(
     for line in bond_result[0].strip('\n').split('\n'):
         # up to 3 groups per line
         elements = line.split()
-        num_groups = len(elements)//4
+        num_groups = len(elements) // 4
         groups = []
         for i in range(num_groups):
-            groups.append([elements[jj+i*4] for jj in range(4)])
+            groups.append([elements[jj + i * 4] for jj in range(4)])
 
         for g in groups:
             id1, id2, distance, bond_order = g
@@ -287,8 +302,8 @@ def GAMESS_to_Molecule3D(
 
     return Molecule3D(atoms=list(atoms.values()),
                       bonds=bonds,
-                      esp_grid_coords = esp_grid_coords,
-                      esp_grid_charge = esp_grid_charges
+                      esp_grid_coords=esp_grid_coords,
+                      esp_grid_charge=esp_grid_charges
                       )
 
 
@@ -304,7 +319,6 @@ if __name__ == '__main__':
     with open('../test/data/qm/451_b3lyp_631Gd.out', 'r') as f:
         test2 = GAMESS_to_Molecule3D(f.read(), units='Bohr')
         print(test2.partialChargeFit())
-        print(test2.partialChargeFit(solver = 'pulp'))
-        print(test2.partialChargeFit(solver = 'gurobi', method='round'))
+        print(test2.partialChargeFit(solver='pulp'))
+        print(test2.partialChargeFit(solver='gurobi', method='round'))
         # print(test2.partialChargeFit(method='ILP', minmax=True))
-
