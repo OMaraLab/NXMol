@@ -90,14 +90,14 @@ class _Atom:
         """
         return self._index['name']
 
-    @name.setter
-    def name(self, value):
-        """
-        Method for renaming atoms
-        :param value:
-        :return:
-        """
-        self._index['name'] = value
+    # @name.setter
+    # def name(self, value):
+    #     """
+    #     Method for renaming atoms
+    #     :param value:
+    #     :return:
+    #     """
+    #     self._index['name'] = value
 
     def __repr__(self):
         """
