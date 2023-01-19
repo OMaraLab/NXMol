@@ -1,3 +1,4 @@
+import queue
 from functools import reduce
 from sys import stderr
 
@@ -156,6 +157,9 @@ class _2DChemicalObj:
         # I've got a fun idea coming for this one
         # https://github.com/vfscalfani/teletype_mols/blob/main/rdkit_print_mol_ascii.ipynb
 
+    def set_name(self, name: str):
+        self._name = name
+
     def add_atom(self, atom: Atom2D) -> None:
         if not isinstance(atom, Atom2D):
             # not sure if we actually want to add atoms this way
@@ -196,7 +200,7 @@ class _2DChemicalObj:
 
     def remove_atoms(self, indices: set, index_type='name') -> None:
         """
-        Removes multipl atoms from the molecular graph.
+        Removes multiple atoms from the molecular graph.
         :param indices: the set of atom indices to remove
         :param index_type: the type of atom index used for lookup
         """
@@ -284,12 +288,25 @@ class _2DChemicalObj:
             return self.graph[a1_id][a2_id]
         # TODO: add other index types?
 
-    def get_rings(self):
+    def get_atoms_in_ring_with_size(self, size: int) -> set:
         """
-        Get atoms in rings
+        Get atoms in molecule rings with a specific maximum ring size.
         :return:
         """
-        return list(map(tuple, nx.cycle_basis(self._graph)))
+        return set(a for ring in self.rings for a in ring if len(ring) < size)
+
+    def get_bonds_in_ring_with_size(self, size: int) -> set:
+        """
+        Get bonds in  molecule rings with a specific maximum ring size.
+        :return:
+        """
+        ring_bonds = set()
+        for ring in self.rings:
+            if len(ring) < size:
+                for bond in self.bonds:
+                    if set(bond).issubset(set(ring)):
+                        ring_bonds.add(bond)
+        return ring_bonds
 
     def get_backbone_graph(self):
         """
@@ -743,21 +760,64 @@ class _2DChemicalObj:
         # print("Norm Hybridisation Scores: ", hybridisation_scores)
         # print("Conjugated atoms: ", self.conjugated_atoms)
 
-    def get_fragments_around_groups(self, groups: set, depth: int) -> graph:
+    def get_fragments_around_elements(self, elements: set, max_depth: int, restrict_arom: bool = False) -> graph:
         """
         Use a Breadth-First Traversal of the molecular graph around groups of interest
         and return the molecular fragments covered by the traversal. Useful for analysis
         of regions of a molecule.
 
-        :param groups:
-        :param depth:
-        :return:
+        :param elements: elements used to specify where to start each search
+        :param max_depth: the maximum depth of the search about each element
+        :return: frag_marked: a dictionary of {central atom id --> set(atom ids in the fragment)}
+
+        TODO: in the future we can make this more general than just using elements.
         """
 
-        # TODO: This!!!
-        return
+        marked_frags = {}
 
+        # run graph traversal search starting at all groups
+        for e in elements:
 
+            # create list of all atom indices of each specific group
+            g_ids = [a_id for a_id, a in self.atoms.items() if a.element == e]
+
+            # do BFS search starting from each atom of the given element type
+            for g_id in g_ids:
+                search_queue = queue.Queue()
+                search_queue.put((g_id, 0))  # queue item is: (a_id, depth)
+                marked_frags[g_id] = set()
+                while not search_queue.empty():
+                    print(search_queue.queue)
+
+                    # pop queue
+                    a_id, depth = search_queue.get()
+
+                    # if restrict_arom and a_id in self.aromatic_atoms:
+                    #     # TODO: implement aromatic atom property
+                    #     continue
+
+                    # add atom id to marked group fragment and get neighbouring ids
+                    marked_frags[g_id].add(a_id)
+                    n_ids = set(self.graph.neighbors(a_id))
+
+                    # get H atom ids and heavy atom neighbour ids
+                    h_ids = set(n_id for n_id in n_ids if self.get_atom(n_id).element == 'H')
+                    heavy_ids = n_ids.difference(h_ids)
+
+                    # add h_ids to marked fragment
+                    for h_id in h_ids:
+                        marked_frags[g_id].add(h_id)
+
+                    if depth == max_depth:
+                        # stop BFS at max depth
+                        pass
+                    else:
+                        # add unvisited neighbours to search
+                        for n_id in heavy_ids:
+                            if not n_id in marked_frags[g_id]:
+                                search_queue.put((n_id, depth + 1))
+
+        return marked_frags
 
     def add_fragment(self, index: str, atom_ids: set):
         """
@@ -769,6 +829,9 @@ class _2DChemicalObj:
         fragment = self.graph.subgraph(atom_ids)
         self._fragments[index] = fragment
         return fragment
+
+    def get_fragment(self, index: str):
+        return self._fragments.get(index)
 
 
 class _3DChemicalObj(_2DChemicalObj):

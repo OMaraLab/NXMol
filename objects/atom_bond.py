@@ -222,7 +222,7 @@ class _Bond:
 
     def __init__(self, **kwargs):
         self._attributes = {}
-        self._atoms = set()
+        self._atoms = {}
 
         if 'order' in kwargs:
             self.order = kwargs['order']
@@ -254,6 +254,8 @@ class _Bond:
         #   short term
         self.order = order
 
+    def get_atoms(self):
+        return self._atoms
 
 
 class Bond2D(_Bond):
