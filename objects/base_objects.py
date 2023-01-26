@@ -170,7 +170,7 @@ class _2DChemicalObj:
         self._graph.add_node(atom.name)
         self._graph._node[atom.name] = atom
 
-    def add_bond(self, atom1_name: str, atom2_name: str, bond: Bond2D) -> None:
+    def add_bond(self, a1: str, a2: str, bond: Bond2D) -> None:
         """
         :param bond:
         :return:
@@ -178,10 +178,12 @@ class _2DChemicalObj:
         if not isinstance(bond, Bond2D):
             raise TypeError('bond must be of type Bond')
 
-        if atom1_name not in self._graph.nodes or atom2_name not in self._graph.nodes:
+        if a1 not in self._graph.nodes or a2 not in self._graph.nodes:
             raise IndexError
 
-        self._graph.add_edge(atom1_name, atom2_name, bond)
+        self._graph.add_edge(a1, a2)
+        self._graph._adj[a1][a2] = bond
+        self._graph._adj[a2][a1] = bond
 
     def remove_atom(self, index: Any, index_type='name') -> None:
         """
@@ -336,13 +338,13 @@ class _2DChemicalObj:
                                                      font_sizes['edge'] if font_sizes else 12, \
                                                      font_sizes['label'] if font_sizes else 14
 
-
         if backbone_only:
             graph = self.get_backbone_graph()
             formal_charges = {a.get_index(): a.formal_charge for a in graph.nodes.values()}
             bond_orders = {frozenset(bond_ids): self.get_bond(bond_ids[0], bond_ids[1]).order for bond_ids in graph.edges()}
         else:
             graph = self._graph
+            print(self.atoms)
             formal_charges = self.formal_charges
             bond_orders = self.bond_orders
 
@@ -846,6 +848,15 @@ class _2DChemicalObj:
     def get_fragment(self, index: str):
         return self._fragments.get(index)
 
+    def get_pdb_str(self):
+        """
+        Return the molecule as a pdb file.
+        :return:
+        """
+
+
+        return
+
 
 class _3DChemicalObj(_2DChemicalObj):
     def __init__(self, atoms, bonds, name: str = ''):
@@ -855,10 +866,19 @@ class _3DChemicalObj(_2DChemicalObj):
     #     if not isinstance(atom, Atom3D): # not sure if we actually want to add atoms this way
     #         # might make it  easier to enforce minimum information
     #         raise TypeError('atom must be of type Atom2D')
-        
-    def add_bond(self, bond: Bond3D):
-        if not isinstance(bond, Bond3D):
-            raise TypeError('bond must be of type Bond')
+
+    # def add_bond(self, atom1_name: str, atom2_name: str, bond: Bond3D) -> None:
+    #     """
+    #     :param bond:
+    #     :return:
+    #     """
+    #     if not isinstance(bond, Bond3D):
+    #         raise TypeError('bond must be of type Bond')
+    #
+    #     if atom1_name not in self._graph.nodes or atom2_name not in self._graph.nodes:
+    #         raise IndexError
+    #
+    #     self._graph.add_edge(atom1_name, atom2_name, bond)
 
     @property
     def atom_coord_matrix(self):

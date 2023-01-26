@@ -230,6 +230,7 @@ class _Bond:
     def __init__(self, **kwargs):
         self._attributes = {}
         self._atoms = {}
+        self.order = None
 
         if 'order' in kwargs:
             self.order = kwargs['order']
