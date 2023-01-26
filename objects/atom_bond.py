@@ -2,7 +2,7 @@
 Contains abstract and implemented classes representing atoms and bonds.
 """
 import copy
-from typing import Tuple
+from typing import Tuple, Mapping
 
 Coordinate = Tuple[float, float, float]
 
@@ -129,7 +129,10 @@ class _Atom:
         :return:
         """
         # TODO raise warning if overlap between index and dictionary
-        self._attributes.__setitem__(key, value)
+        print(f"Key to Update: {key} with Value: {value}")
+        self.__dict__[key] = value
+        #self._attributes.__setitem__(key, value)
+        #print(f"Key to Update: {key} with Value: {value}")
 
     def __contains__(self, item):
         """
@@ -150,7 +153,7 @@ class _Atom:
     def copy(self):
         return self.__dict__.copy()
 
-    def update(self):
+    def update(self, other=None, **kwargs):
         """
         Pass thorough dictionary methods to the attributes dictionary to maintain compatibility with networkx
         Networkx requires dict of dict of dict structure
@@ -158,7 +161,11 @@ class _Atom:
         :param value:
         :return:
         """
-        raise NotImplemented
+        if other is not None:
+            for k, v in other.items() if isinstance(other, Mapping) else other:
+                self.__setitem__(k, v)
+        for k, v in kwargs.items():
+            self.__setitem__(k, v)
 
 
 class Atom2D(_Atom):

@@ -164,7 +164,7 @@ class _2DChemicalObj:
         if not isinstance(atom, Atom2D):
             # not sure if we actually want to add atoms this way
             # might make it  easier to enforce minimum information
-            raise TypeError('atom must be of type Atom2D')
+            raise TypeError(f'atom must be of type Atom2D, but is of type f{type(atom)}')
         if atom.name in self._graph.nodes:
             raise IndexError # Error type subject to change
         self._graph.add_node(atom.name)
@@ -430,6 +430,19 @@ class _2DChemicalObj:
         :return: int count
         """
         return len([a for a in self.atoms if self.get_atom(a).element == element])
+
+    def set_atom_attributes(self, attrs: dict):
+        """
+        Update the atom node objects with the attributes as specified by the attrs dictionary.
+        :param attrs: dictionary of atom keys to attributes to set, i.e. {'H1': {'formal_charge': 0, 'nbes': 10}}
+        """
+        print(attrs)
+        nx.set_node_attributes(self._graph, attrs)
+
+        # TODO: temporary until atom update() is implemented
+        # for a_id, attr in attrs.items():
+        #     self._graph.
+        #     pass
 
     def assign_bond_orders_and_charges_with_ILP(
             self,
@@ -838,10 +851,10 @@ class _3DChemicalObj(_2DChemicalObj):
     def __init__(self, atoms, bonds, name: str = ''):
         super().__init__(atoms, bonds, name)
 
-    def add_atom(self, atom: Atom3D):
-        if not isinstance(atom, Atom3D): # not sure if we actually want to add atoms this way
-            # might make it  easier to enforce minimum information
-            raise TypeError('atom must be of type Atom2D')
+    # def add_atom(self, atom: Atom3D):
+    #     if not isinstance(atom, Atom3D): # not sure if we actually want to add atoms this way
+    #         # might make it  easier to enforce minimum information
+    #         raise TypeError('atom must be of type Atom2D')
         
     def add_bond(self, bond: Bond3D):
         if not isinstance(bond, Bond3D):
