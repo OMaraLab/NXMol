@@ -185,6 +185,9 @@ class _2DChemicalObj:
         self._graph._adj[a1][a2] = bond
         self._graph._adj[a2][a1] = bond
 
+    def remove_bond(self, a1: str, a2: str) -> None:
+        self._graph.remove_edge(a1, a2)
+
     def remove_atom(self, index: Any, index_type='name') -> None:
         """
         Removes an atom from the molecular graph.
@@ -440,6 +443,18 @@ class _2DChemicalObj:
         """
         print(attrs)
         nx.set_node_attributes(self._graph, attrs)
+
+        # TODO: temporary until atom update() is implemented
+        # for a_id, attr in attrs.items():
+        #     self._graph.
+        #     pass
+
+    def set_bond_attributes(self, attrs: dict):
+        """
+        Update the edge objects with the attributes as specified by the attrs dictionary.
+        :param attrs: dictionary of bond keys to attributes to set, i.e. {('H1', 'C1'): {'order': 1}}
+        """
+        nx.set_edge_attributes(self._graph, attrs)
 
         # TODO: temporary until atom update() is implemented
         # for a_id, attr in attrs.items():

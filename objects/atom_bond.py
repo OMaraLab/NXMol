@@ -129,7 +129,6 @@ class _Atom:
         :return:
         """
         # TODO raise warning if overlap between index and dictionary
-        print(f"Key to Update: {key} with Value: {value}")
         self.__dict__[key] = value
         #self._attributes.__setitem__(key, value)
         #print(f"Key to Update: {key} with Value: {value}")
@@ -242,7 +241,8 @@ class _Bond:
 
     def __setitem__(self, key, value):
         # might need to set this up given the way networkx interfaces
-        self._attributes.__setitem__(key, value)
+        #self._attributes.__setitem__(key, value)
+        self.__dict__[key] = value
 
     def __contains__(self, item):
         return self._attributes.__contains__(item)
@@ -250,17 +250,30 @@ class _Bond:
     def copy(self):
         return self.__dict__.copy()
 
-    def update(self):
-        raise NotImplementedError
+    def update(self, other=None, **kwargs):
+        """
+        Pass thorough dictionary methods to the attributes dictionary to maintain compatibility with networkx
+        Networkx requires dict of dict of dict structure
+        """
+        if other is not None:
+            for k, v in other.items() if isinstance(other, Mapping) else other:
+                self.__setitem__(k, v)
+        for k, v in kwargs.items():
+            self.__setitem__(k, v)
 
     def get(self, *args, **kwargs):
         return self._attributes.get(*args, **kwargs)
+
+    def get_order(self) -> int:
+        return self.order
 
     def set_order(self, order: int):
         # TODO: I don't know if this is what we have in mind, i.e. getters/setters
         #   or if we want to use a more general method, but i'm writing this for use in the
         #   short term
+        tmp = self.order
         self.order = order
+        print(f"Order was set from {tmp} to {self.order}")
 
     def get_atoms(self):
         return self._atoms
