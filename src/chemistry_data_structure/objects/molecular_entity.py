@@ -89,6 +89,14 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
     def writePDB(self):
         return
 
+    def writeMol2(self):
+        Mol2Template = '''
+        @<TRIPOS>MOLECULE
+*****
+ {num_atoms} {num_bonds} 0 0 0
+SMALL
+GASTEIGER'''
+
 
 class RDKitMolecule(_3DChemicalObj):
 
