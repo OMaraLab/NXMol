@@ -6,6 +6,22 @@ VALENCE_ELECTRONS = {
     'RB': 1, 'SR': 2, 'IN': 3, 'SN': 4, 'SB': 5, 'TE': 6, 'I': 7, 'XE': 8,
 }
 
+FULL_VALENCES = {
+    'C': {4},
+    'N': {3, 5},
+    'O': {2},
+    'H': {1},
+    'S': {2, 4, 6},
+    'SE': {2, 4, 6},
+    'P': {3, 5},
+    'CL': {1},
+    'BR': {1},
+    'F': {1},
+    'I': {1, 3, 5},
+    'B': {3, 5},
+    'SI': {4},
+}
+
 ELECTRONEGATIVITIES = {
     # Source: https://en.wikipedia.org/wiki/Electronegativity
     'H': 2.20, 'HE': None,
@@ -18,3 +34,5 @@ ELECTRONEGATIVITIES = {
 # unit conversions
 BOHR_PER_ANG = 1.8897259885789  # taken straight from the field_fit_interface
 BOHR_PER_NM = BOHR_PER_ANG * 10.
+
+AROMATIC_BOND_ORDER = 1.5

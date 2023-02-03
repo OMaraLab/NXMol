@@ -90,12 +90,125 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         return
 
     def writeMol2(self):
+        raise NotImplementedError
         Mol2Template = '''
         @<TRIPOS>MOLECULE
 *****
  {num_atoms} {num_bonds} 0 0 0
 SMALL
 GASTEIGER'''
+
+    def calculate_new_hydrogen_coordinates(self, marked_heavy_atom_ids: list):
+        """
+        Places new hydrogens into simple idealised geometries to later be optimised
+        by subsequent MMF/QM calculations.
+        TODO: THIS!!!
+
+        """
+
+        # find new neighbours
+        first_neighbours = self.first_neighbours
+
+        for heavy_atom_id in marked_heavy_atom_ids:
+
+            # define neighbours of each heavy atom stereocenter
+            neighbour_ids = list(first_neighbours[heavy_atom_id])
+            h_neighbour_ids = []
+            fixed_neighbour_ids = []
+            heavy_atom = self.atoms[heavy_atom_id]
+
+            # assumes no radicals
+            num_lone_pairs = self.non_bonded_electrons[heavy_atom_id] / 2
+            hybridisation = len(neighbour_ids) + num_lone_pairs
+
+            for atom_id in neighbour_ids:
+                if self.atoms[atom_id].element == 'H':
+                    h_neighbour_ids.append(atom_id)
+                else:
+                    fixed_neighbour_ids.append(atom_id)
+
+            fixed_neighbour_atoms = [
+                atom for atom in self.atoms.values()
+                if atom.index in fixed_neighbour_ids
+            ]
+
+            num_h_to_place = len(h_neighbour_ids)
+
+            # skip if nothing to be done
+            if num_h_to_place == 0:
+                continue
+
+            # get atom coordinates
+            points = [vector(heavy_atom.coordinates)]
+            for atom in fixed_neighbour_atoms:
+                points.append(vector(atom.coordinates))
+
+            # blank list of new coordinates
+            new_coordinates = []
+
+            # Determine coordinates based on hybridisation
+            if hybridisation == LINEAR:
+                # work out vector from direct H neighbour to its only other neighbour
+                new_vector = points[0] - points[1]
+                new_coordinates.append(tuple((points[0] + new_vector).tolist()))
+
+            if hybridisation == TRIGONAL_PLANAR:
+                if num_h_to_place == 1:
+
+                    if num_lone_pairs == 1:
+                        new_coordinates.append(place_first_hydrogen(points, TRIGONAL_PLANAR_BOND_ANGLE))
+                    else:
+                        new_coordinates.append(gromos_trigonal_planar_1H(points))
+                else:
+                    new_coordinates.extend(gromos_trigonal_planar_2H(points))
+
+            if hybridisation == TETRAHEDRAL:
+
+                # Case 1: only 1 hydrogen to add
+                if num_h_to_place == 1:
+
+                    # consider lone pairs for bond geometry
+                    if num_lone_pairs == 2:
+                        new_coordinates.append(place_first_hydrogen(points, TETRAHEDRAL_BOND_ANGLE))
+                    elif num_lone_pairs == 1:
+                        new_coordinates.extend(gromos_tetrahedral_from_2_vectors(points, 1))
+                    else:
+                        new_coordinates.append(gromos_tetrahedral_1H(points))
+
+                # Case 2: 2 hydrogens to add
+                if num_h_to_place == 2:
+
+                    # consider lone pairs for bond geometry
+                    if num_lone_pairs == 1:
+                        new_coordinates.append(place_first_hydrogen(points, TETRAHEDRAL_BOND_ANGLE))
+                        points.extend(new_coordinates)
+                        new_coordinates.extend(gromos_tetrahedral_from_2_vectors(points, 1))
+                    else:
+                        new_coordinates.extend(gromos_tetrahedral_from_2_vectors(points, 2))
+
+                # Case 3: 3 hydrogens to add
+                if num_h_to_place == 3:
+                    new_coordinates.extend(gromos_tetrahedral_3H(points))
+
+                # Case 4: methyl... ignore
+                if num_h_to_place == 4:
+                    continue
+
+            if hybridisation > 4:
+                # do not handle above tetrahedral state - this may need to be fixed.
+                # print("Relying on Bertrand's random method instead... Hybridisation = {} Atom = {} Element = {}".format(hybridisation, heavy_atom_id, heavy_atom.element))
+                continue
+
+            # Update atom coordinates
+            for (n, atom_id) in enumerate(h_neighbour_ids):
+                self.atoms[atom_id] = Atom(
+                    index=atom_id,
+                    name='H{}'.format(atom_id),
+                    element='H',
+                    valence=1,
+                    capped=True,
+                    coordinates=new_coordinates[n],
+                )
 
 
 class RDKitMolecule(_3DChemicalObj):

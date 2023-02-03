@@ -10,7 +10,7 @@ import numpy as np
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
 from chemistry_data_structure.parsing.pdb import bonds_for_pdb_line, is_pdb_connect_line, pdb_atoms_in
-from chemistry_data_structure.helpers.chem import BOHR_PER_ANG, BOHR_PER_NM
+from chemistry_data_structure.helpers.chem import BOHR_PER_ANG, BOHR_PER_NM, FULL_VALENCES, VALENCE_ELECTRONS
 
 
 ############# mol2 Parser
@@ -104,6 +104,93 @@ def pdb_index_parser(pdb_str: str):
         id_map[int(GAMESS_id)] = atom_name
     return id_map
 
+
+def pdb_to_Molecule3D(pdb_str: str,
+                      mol_name: str = "",
+                      net_charge: int = None,
+                      assign_bond_orders_and_charges: bool = False) -> Molecule3D:
+    """
+    Create a 3D molecular entity from a PDB file.
+    :param pdb_str: a string of the pdb file contents
+    :param net_charge: the net charge of the input molecule
+    :return: Molecule3D as read from the input pdb.
+    """
+
+    # TODO: assert statements
+
+    # get pdb atoms
+    pdb_atoms = [pdb_atom for pdb_atom in pdb_atoms_in(pdb_str)]
+
+    # convert to chem_ds atoms
+    atoms = []
+    n_id = 0
+    for pdb_atom in pdb_atoms:
+        atoms.append(
+            Atom3D(
+                index={'pdb': int(pdb_atom.index), 'nid': n_id},
+                name=pdb_atom.name.replace("_", ""),
+                element=pdb_atom.element,
+                coordinates=pdb_atom.coordinates,
+                full_valence=FULL_VALENCES[pdb_atom.element.upper()],
+                valence_electrons=VALENCE_ELECTRONS[pdb_atom.element.upper()],
+            )
+        )
+        n_id += 1
+
+    # get pdb bonds
+    pdb_bonds = reduce(
+        lambda acc, e: acc | e,
+        [
+            bonds_for_pdb_line(line)
+            for line in pdb_str.splitlines()
+            if is_pdb_connect_line(line)
+        ],
+        set(),
+    )
+
+    # print("PDB Bonds: ", pdb_bonds)
+
+    # convert pdb_bonds to chem_ds bonds
+    pdb_atom_index_name_map = {pdb_atom.index: pdb_atom.name.replace("_", "") for pdb_atom in pdb_atoms}
+    bonds = []
+    for pdb_bond in pdb_bonds:
+        a1_ind, a2_ind = list(pdb_bond)
+        bonds.append((pdb_atom_index_name_map[a1_ind], pdb_atom_index_name_map[a2_ind], Bond3D()))
+
+    # print("Bonds: ", bonds)
+
+    molecule = Molecule3D(
+        atoms,
+        bonds,
+        name=mol_name
+    )
+
+    # assign bond orders and charges with ILP
+    if assign_bond_orders_and_charges and net_charge is not None:
+        molecule.assign_bond_orders_and_charges_with_ILP(net_charge=net_charge)
+
+        # if assign aromatic bonds, hybridisations, conjugations
+        molecule.assign_aromatic_bonds()
+        molecule.assign_hybridisations_and_valences()
+        molecule.assign_conjugated_atoms()
+
+    # print("Mol Name: ", mol_name)
+    # print("Atoms: ", molecule.atoms)
+    # print("Valences: ", molecule.valences)
+    # print("Non-bonded Electrons: ", molecule.non_bonded_electrons)
+    # print("Hybridisations: ", molecule.hybridisations)
+    # print("Conjugations", molecule.atom_conjugations)
+    # print("Formal Charges: ", molecule.formal_charges)
+    # print("Bonds: ", molecule.bonds)
+    # print("Bond Orders: ", molecule.bond_orders)
+
+    return molecule
+
+
+class BlockException(Exception):
+    pass
+
+
 def _GAMESS_parser(GAMESS_log: str, units: str = 'Bohr', id_map=None):
     if units == 'Bohr':
         coord_unit_conversion = BOHR_PER_ANG
@@ -174,14 +261,14 @@ def _GAMESS_parser(GAMESS_log: str, units: str = 'Bohr', id_map=None):
         if id_map is None:
             atom_name = GAMESS_name  # TODO need to check if there are underscores between these
             index_data = {'index': index,
-                     'GAMESS_index': index,
-                     'GAMESS_name': GAMESS_name}
+                          'GAMESS_index': index,
+                          'GAMESS_name': GAMESS_name}
         else:
             atom_name = mapping(index)
             index_data = {'index': index,
-             'GAMESS_index': index,
-             'GAMESS_name': GAMESS_name,
-             'pdb_name': atom_name}
+                          'GAMESS_index': index,
+                          'GAMESS_name': GAMESS_name,
+                          'pdb_name': atom_name}
         atoms[index] = Atom3D(
             name=atom_name,
             element=element,
@@ -244,8 +331,6 @@ def GAMESS_to_Molecule3D(
                       )
 
 
-
-
 def GAMESS_pdb_to_Molecule3D(
         pdb_str: str,
         GAMESS_str: str,
@@ -268,78 +353,8 @@ def GAMESS_pdb_to_Molecule3D(
                       )
 
 
-def pdb_to_Molecule3D(pdb_str: str,
-                      mol_name: str = "",
-                      net_charge: int = None,
-                      assign_bond_orders_and_charges: bool = False) -> Molecule3D:
-    """
-    Create a 3D molecular entity from a PDB file.
-    :param pdb_str:
-    :param net_charge:
-    :return:
-    """
-
-    # TODO: assert statements
-
-    # get pdb atoms
-    pdb_atoms = [pdb_atom for pdb_atom in pdb_atoms_in(pdb_str)]
-
-    # convert to chem_ds atoms
-    atoms = []
-    n_id = 0
-    for pdb_atom in pdb_atoms:
-        atoms.append(
-            Atom3D(
-                index={'pdb': int(pdb_atom.index), 'nid': n_id},
-                name=pdb_atom.name.replace("_", ""),
-                element=pdb_atom.element,
-                coordinates=pdb_atom.coordinates
-            )
-        )
-        n_id += 1
-
-    # get pdb bonds
-    pdb_bonds = reduce(
-        lambda acc, e: acc | e,
-        [
-            bonds_for_pdb_line(line)
-            for line in pdb_str.splitlines()
-            if is_pdb_connect_line(line)
-        ],
-        set(),
-    )
-
-    # print("PDB Bonds: ", pdb_bonds)
-
-    # convert pdb_bonds to chem_ds bonds
-    pdb_atom_index_name_map = {pdb_atom.index: pdb_atom.name.replace("_", "") for pdb_atom in pdb_atoms}
-    bonds = []
-    for pdb_bond in pdb_bonds:
-        a1_ind, a2_ind = list(pdb_bond)
-        bonds.append((pdb_atom_index_name_map[a1_ind], pdb_atom_index_name_map[a2_ind], Bond3D()))
-
-    # print("Bonds: ", bonds)
-
-    molecule = Molecule3D(
-        atoms,
-        bonds,
-        name=mol_name
-    )
-
-    # assign bond orders and charges with ILP
-    if assign_bond_orders_and_charges and net_charge is not None:
-        molecule.assign_bond_orders_and_charges_with_ILP(net_charge)
-
-    # if assign aromatic bonds
-    # molecule.assign_aromatic_bonds() # TODO: implement this!!!
-
-    return molecule
-
-
 class BlockException(Exception):
     pass
-
-
 
 
 if __name__ == '__main__':

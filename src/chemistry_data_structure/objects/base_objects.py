@@ -1,29 +1,41 @@
+import queue
+from functools import reduce
 from sys import stderr
 
 import networkx as nx
-from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable
+from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet
 
 import pulp
 import numpy as np
 from matplotlib import pyplot as plt
 
-from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS
+from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
+    AROMATIC_BOND_ORDER
 from chemistry_data_structure.helpers.io import write_to_debug
+from chemistry_data_structure.helpers.rings import bonds_for_ring
 from chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D, _Bond, _Atom
 from chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
 
-# TODO: might rework this to replace the factory classes for proper integration
-ELEMENT_COLOURS = {'H': '#eeeeee', 'C': 'grey', 'O': '#ff91a4', 'N': '#5dabf5'}
+ELEMENT_COLOURS = {'H': '#eeeeee',
+                   'C': 'grey',
+                   'O': '#ff91a4',
+                   'N': '#5dabf5',
+                   'S': '#b7b70f',
+                   'P': 'orange',
+                   'F': 'green',
+                   'CL': 'purple',
+                   'BR': 'pink',
+                   'SI': 'yellow'}
 
 class _2DChemicalObj:
     """
     Class representing a molecular entity, i.e. with a unique structural connectivity
     represented as a graph and stereo-isomeric form. This object contains a networkx graph to represent
-    te . This can be parsed to numerous common string formats.
+    it. This can be parsed to numerous common string formats.
     """
     def __init__(self,
-                 atoms: List[_Atom] = [],
-                 bonds: List[Union[str, str, _Bond]] = [],
+                 atoms: List[_Atom] = None,
+                 bonds: List[Union[str, str, _Bond]] = None,
                  name: str = ''
                  ):
 
@@ -32,18 +44,31 @@ class _2DChemicalObj:
         # init graph
         self._name = name
         self._graph = nx.Graph()
-        if atoms:
+        if atoms is not None:
             self._graph.add_nodes_from([a.name for a in atoms])
             for a in atoms:
                 self._graph._node[a.name] = a
 
-            if bonds:
+            if bonds is not None:
                 self._graph.add_edges_from([(a1, a2) for a1, a2, _ in bonds])
                 for a1, a2, bond in bonds:
                     self._graph._adj[a1][a2] = bond
                     self._graph._adj[a2][a1] = bond
 
-        # other properties
+        # sub_class entities
+        self._fragments = {}
+        self._conformations = {}
+
+        # molecule properties
+        # TODO: store dictionaries in object for quick access
+
+        # dict of dict of properties for iterative updates
+        # TODO: @Callum I'm sure theres a more class correct way of doing this, do you know?
+        #   i.e. a data structure for storing all class properties that can be iterated through easily
+        #   i'm thinking we can use this when adding/removing atoms and bonds to update other properties
+        #   if we store them explicitly
+        self._properties = {'fragments': self._fragments}
+
 
     # def __repr__(self):
     #     return f'{type(self).__name__}: {self.chemical_formula}'
@@ -52,6 +77,12 @@ class _2DChemicalObj:
     # def chemical_formula(self):
     #     elements = [a.element for a in self.atom_objects]
     #     return ''.join(f'{e}{elements.count(e)}' for e in list(set(elements)))
+
+    # TODO: so with these properties, they are very convenient but actually
+    #   require some loops etc. each time they are called. What would be cool
+    #   is if we can somehow allow all of these properties to be updated
+    #   whenever there is a change in the molecule, and otherwise just
+    #   return the value for that property.
 
     @property
     def atoms(self):
@@ -69,6 +100,10 @@ class _2DChemicalObj:
     @property
     def bonds(self):
         return self.graph.edges
+
+    @property
+    def rings(self):
+        return list(map(tuple, nx.cycle_basis(self.graph)))
 
     @property
     def bond_objects(self):
@@ -94,6 +129,26 @@ class _2DChemicalObj:
     def non_bonded_electrons(self):
         return {atom_id: self.get_atom(atom_id).non_bonded_electrons for atom_id in self.atoms}
 
+    @property
+    def hybridisations(self):
+        return {atom_id: self.get_atom(atom_id).hybridisation for atom_id in self.atoms}
+
+    @property
+    def atom_conjugations(self):
+        return {atom_id: self.get_atom(atom_id).is_conjugated for atom_id in self.atoms}
+
+    @property
+    def valences(self):
+        return {atom_id: self.get_atom(atom_id).valence for atom_id in self.atoms}
+
+    @property
+    def neighbour_counts(self):
+        return {atom_id: len([x for x in self.graph.neighbors(atom_id)]) for atom_id in self.atoms}
+
+    @property
+    def first_neighbours(self):
+        return {atom_id: [x for x in self.graph.neighbors(atom_id)] for atom_id in self.atoms}
+
     # @graph.setter
     # def graph(self, value):
     #     self._graph = value
@@ -102,10 +157,14 @@ class _2DChemicalObj:
         # I've got a fun idea coming for this one
         # https://github.com/vfscalfani/teletype_mols/blob/main/rdkit_print_mol_ascii.ipynb
 
+    def set_name(self, name: str):
+        self._name = name
+
     def add_atom(self, atom: Atom2D) -> None:
-        if not isinstance(atom, Atom2D): # not sure if we actually want to add atoms this way
+        if not isinstance(atom, Atom2D):
+            # not sure if we actually want to add atoms this way
             # might make it  easier to enforce minimum information
-            raise TypeError('atom must be of type Atom2D')
+            raise TypeError(f'atom must be of type Atom2D, but is of type f{type(atom)}')
         if atom.name in self._graph.nodes:
             raise IndexError # Error type subject to change
         self._graph.add_node(atom.name)
@@ -117,7 +176,7 @@ class _2DChemicalObj:
                          copy=False)
         atom._index['name'] = name
 
-    def add_bond(self, atom1_name: str, atom2_name: str, bond: Bond2D) -> None:
+    def add_bond(self, a1: str, a2: str, bond: Bond2D) -> None:
         """
         :param bond:
         :return:
@@ -125,10 +184,39 @@ class _2DChemicalObj:
         if not isinstance(bond, Bond2D):
             raise TypeError('bond must be of type Bond')
 
-        if atom1_name not in self._graph.nodes or atom2_name not in self._graph.nodes:
+        if a1 not in self._graph.nodes or a2 not in self._graph.nodes:
             raise IndexError
 
-        self._graph.add_edge(atom1_name, atom2_name, bond)
+        self._graph.add_edge(a1, a2)
+        self._graph._adj[a1][a2] = bond
+        self._graph._adj[a2][a1] = bond
+
+    def remove_bond(self, a1: str, a2: str) -> None:
+        self._graph.remove_edge(a1, a2)
+
+    def remove_atom(self, index: Any, index_type='name') -> None:
+        """
+        Removes an atom from the molecular graph.
+        :param index: the atom index to remove
+        :param index_type: the type of atom index used for lookup
+        """
+        if index_type == 'name':
+            # use name index
+            self._graph.remove_node(index)
+        else:
+            # account for alternate indexing system
+            for a_id, a in self.atoms.items():
+                if a._index[index_type] == index:
+                    self._graph.remove_node(a_id)
+
+    def remove_atoms(self, indices: set, index_type='name') -> None:
+        """
+        Removes multiple atoms from the molecular graph.
+        :param indices: the set of atom indices to remove
+        :param index_type: the type of atom index used for lookup
+        """
+        for index in indices:
+            self.remove_atom(index, index_type=index_type)
 
     def get_atom(self, index: Any, index_type='name'):
         if index_type == 'name':
@@ -153,7 +241,7 @@ class _2DChemicalObj:
 
     def get_heavy_atoms(self):
         """
-        Returns all heavy atoms of the molecule.
+        Returns all heavy atoms in the molecule.
         """
         return [a for a in self.atoms if self.get_atom(a).element != 'H']
 
@@ -171,6 +259,34 @@ class _2DChemicalObj:
         """
         return {atom_id: self.formal_charges[atom_id] for atom_id in index}
 
+    def get_non_bonded_electrons(self, index: Iterable[str]):
+        """
+        Get the non-bonded electrons for a specified list of atoms. Uses atom name indexing.
+        :return:
+        """
+        return {atom_id: self.non_bonded_electrons[atom_id] for atom_id in index}
+
+    def get_hybridisations(self, index: Iterable[str]):
+        """
+        Get the hybridisations for a specified list of atoms. Uses atom name indexing.
+        :return:
+        """
+        return {atom_id: self.hybridisations[atom_id] for atom_id in index}
+
+    def get_valences(self, index: Iterable[str]):
+        """
+        Get the valences for a specified list of atoms. Uses atom name indexing.
+        :return:
+        """
+        return {atom_id: self.valences[atom_id] for atom_id in index}
+
+    def get_conjugations(self, index: Iterable[str]):
+        """
+        Get the conjugation status for a specified list of atoms. Uses atom name indexing.
+        :return:
+        """
+        return {atom_id: self.atom_conjugations[atom_id] for atom_id in index}
+
     def get_bond_orders(self, index: Iterable[Tuple[str]]):
         """
         Get the bond orders for a specified list of bonds. Uses atom name indexing.
@@ -183,12 +299,25 @@ class _2DChemicalObj:
             return self.graph[a1_id][a2_id]
         # TODO: add other index types?
 
-    def get_rings(self):
+    def get_atoms_in_ring_with_size(self, size: int) -> set:
         """
-        Get atoms in rings
+        Get atoms in molecule rings with a specific maximum ring size.
         :return:
         """
-        return list(map(tuple, nx.cycle_basis(self._graph)))
+        return set(a for ring in self.rings for a in ring if len(ring) < size)
+
+    def get_bonds_in_ring_with_size(self, size: int) -> set:
+        """
+        Get bonds in  molecule rings with a specific maximum ring size.
+        :return:
+        """
+        ring_bonds = set()
+        for ring in self.rings:
+            if len(ring) < size:
+                for bond in self.bonds:
+                    if set(bond).issubset(set(ring)):
+                        ring_bonds.add(bond)
+        return ring_bonds
 
     def get_backbone_graph(self):
         """
@@ -197,19 +326,26 @@ class _2DChemicalObj:
         The returned subgraph view's attributes are linked to the base graph.
         :return: nx.graph
         """
-        heavy_atoms = [a.name for a in self.atoms.values() if a.element != 'H']
+        heavy_atoms = set(a.name for a in self.atoms.values() if a.element != 'H')
         return self.graph.subgraph(heavy_atoms)
 
     def draw_graph(self,
                    fixed_heavy_atoms: dict = None,
                    backbone_only: bool = False,
                    show: bool = True,
-                   save_fp: str = None):
+                   save_fp: str = None,
+                   font_sizes: dict = None,
+                   offsets: tuple = None,
+                   draw_formal_charges: bool = True,
+                   draw_atom_ids: bool = True):
         """
         Draws the molecular graph in kamada kawai layout.
         :param show: if true, show plot, otherwise don't
         :param save_name: if specified, save the png to the given fp.
         """
+        node_font_sz, edge_font_sz, charge_font_sz = font_sizes['node'] if font_sizes else 14, \
+                                                     font_sizes['edge'] if font_sizes else 12, \
+                                                     font_sizes['label'] if font_sizes else 14
 
         if backbone_only:
             graph = self.get_backbone_graph()
@@ -217,39 +353,48 @@ class _2DChemicalObj:
             bond_orders = {frozenset(bond_ids): self.get_bond(bond_ids[0], bond_ids[1]).order for bond_ids in graph.edges()}
         else:
             graph = self._graph
+            print(self.atoms)
             formal_charges = self.formal_charges
             bond_orders = self.bond_orders
 
         # create colour map of element colours
         colour_map = []
-        for atom_name in graph.nodes():
-            colour_map.append(ELEMENT_COLOURS[atom_name.strip("0123456789")])
+        for atom in graph.nodes.values():
+            colour_map.append(ELEMENT_COLOURS[atom.element.strip("0123456789").upper()])
 
         # setup layouts
+        kamada_kawai = False
         if fixed_heavy_atoms is not None:
             pos = nx.spring_layout(graph, pos=fixed_heavy_atoms, fixed=fixed_heavy_atoms.keys())
         else:
-            pos = nx.spring_layout(graph)
+            kamada_kawai = True
+            pos = nx.kamada_kawai_layout(graph)
 
         #pos = nx.spring_layout(self._graph)
-        if backbone_only:
-            offset_pos = {k: (v[0] + 0.5, v[1] + 0.15) for k, v in pos.items()}
-        else:
-            offset_pos = {k: (v[0] + 0.65, v[1] + 0.2) for k, v in pos.items()}
+        if offsets is None:
+            if backbone_only:
+                offsets = (0.5, 0.15)
+            else:
+                offsets = (0.65, 0.2)
+        offset_pos = {k: (v[0] + offsets[0], v[1] + offsets[1]) for k, v in pos.items()}
 
+        # override if kamada kawai
+        if kamada_kawai:
+            offset_pos = {k: (v[0] + 0.06, v[1] + 0.05) for k, v in pos.items()}
 
         # draw graph, with node and edge labels
-        plt.cla()
-        nx.draw(graph, pos=pos, with_labels=True, font_size=10,
-                font_color='black', node_color=colour_map, node_size=500, edge_color='black')
+        fig = plt.figure(figsize=(6, 5), dpi=600)
+        nx.draw(graph, pos=pos, with_labels=draw_atom_ids, font_size=node_font_sz,
+                font_color='black', node_color=colour_map, node_size=600, edge_color='black')
         node_path_coll = plt.gca().collections[0]
         node_path_coll.set_edgecolor("#afafaf")
         node_path_coll.set_lw(2)
         edge_path_coll = plt.gca().collections[1]
         edge_path_coll.set_lw(1.5)
-        nx.draw_networkx_labels(graph, offset_pos, formal_charges,
-                                font_color='red', font_size=10)
-        nx.draw_networkx_edge_labels(graph, pos, bond_orders)
+        if draw_formal_charges:
+            nx.draw_networkx_labels(graph, offset_pos, formal_charges,
+                                    font_color='red', font_size=edge_font_sz)
+        nx.draw_networkx_edge_labels(graph, pos, bond_orders, font_size=charge_font_sz)
 
         if backbone_only:
             plt.margins(x=0.2, y=0.2)
@@ -259,10 +404,11 @@ class _2DChemicalObj:
         # optionally show or save molecular graph
         if show:
             plt.show()
+        else:
+            if save_fp is not None:
+                plt.savefig(save_fp, format='png')
             plt.cla()
-        if save_fp is not None:
-            plt.savefig(save_fp, format='png')
-            plt.cla()
+            plt.close()
 
     def get_graph_adj_mat(self, as_numpy: bool = True):
         """
@@ -275,7 +421,7 @@ class _2DChemicalObj:
         else:
             return adj.tolist()
 
-    def get_neighbour_counts(self, element: str):
+    def get_neighbour_element_counts(self, element: str):
         """
         Returns a dictionary of {atom:count} where count is the number of neighbouring
         atoms of the given element.
@@ -295,6 +441,31 @@ class _2DChemicalObj:
         :return: int count
         """
         return len([a for a in self.atoms if self.get_atom(a).element == element])
+
+    def set_atom_attributes(self, attrs: dict):
+        """
+        Update the atom node objects with the attributes as specified by the attrs dictionary.
+        :param attrs: dictionary of atom keys to attributes to set, i.e. {'H1': {'formal_charge': 0, 'nbes': 10}}
+        """
+        print(attrs)
+        nx.set_node_attributes(self._graph, attrs)
+
+        # TODO: temporary until atom update() is implemented
+        # for a_id, attr in attrs.items():
+        #     self._graph.
+        #     pass
+
+    def set_bond_attributes(self, attrs: dict):
+        """
+        Update the edge objects with the attributes as specified by the attrs dictionary.
+        :param attrs: dictionary of bond keys to attributes to set, i.e. {('H1', 'C1'): {'order': 1}}
+        """
+        nx.set_edge_attributes(self._graph, attrs)
+
+        # TODO: temporary until atom update() is implemented
+        # for a_id, attr in attrs.items():
+        #     self._graph.
+        #     pass
 
     def assign_bond_orders_and_charges_with_ILP(
             self,
@@ -337,10 +508,8 @@ class _2DChemicalObj:
 
         problem = LpProblem("Lewis problem (bond order and charge assignment)", LpMinimize)
 
-        # TODO: Make bonds have numerical indices as well...
-
         non_allene_atoms = {}
-        for atom in self.atoms.values():
+        for atom in self.atom_objects:
             if disallow_allenes_completely:
                 atom_bonds = [bond for bond in self.bonds if atom.get_index() in bond]
                 if atom.element == 'C' and len(atom_bonds) == 2:
@@ -351,7 +520,7 @@ class _2DChemicalObj:
         # formal charges of atoms
         charges = {
             atom.get_index(): LpVariable("C_{i}".format(i=atom.get_index()), -MAX_ABSOLUTE_CHARGE, MAX_ABSOLUTE_CHARGE, LpInteger)
-            for atom in self.atoms.values()
+            for atom in self.atom_objects
         }
 
         # variable to bind absolute values of charges
@@ -491,13 +660,222 @@ class _2DChemicalObj:
         write_to_debug(debug, 'formal_charges', self.formal_charges)
         write_to_debug(debug, 'non_bonded_electrons', self.non_bonded_electrons)
 
-    def weave_featurize_molecule(self):
+    def assign_aromatic_bonds(self):
         """
-        Create Weave Convultuion featurization of molecule object.
-        This code is sourced from DeepChem, modified for the current data structure.
-        TODO: THIS!
+        Assigns aromatic bonds using huckel rules.
         :return:
         """
+
+        rings = self.rings
+
+        ring_bonds = {
+            ring: bonds_for_ring(ring)
+            for ring in rings
+        }
+
+        try:
+            ring_bond_orders = {
+                ring: [self.bond_orders[bond] for bond in bonds]
+                for (ring, bonds) in ring_bonds.items()
+            }
+        except KeyError:
+            raise Exception('Please assign bond orders first.')
+
+        neighbour_counts = self.neighbour_counts
+
+        def is_sp2(atom_id: int) -> bool:
+            return neighbour_counts[atom_id] == 3
+
+        def is_hucklel_compatible(bond_orders: List[int]) -> bool:
+            '''
+            Implement the Huckel rule of aromaticity: 4n +2.
+            Source: https://en.wikipedia.org/wiki/Hückel%27s_rule
+            '''
+            return (sum([2 for bond_order in bond_orders if bond_order == 2]) - 2) % 4 == 0
+
+        def is_bond_sequence_aromatic(bond_orders: List[int]) -> bool:
+            '''
+            For even-membered ring, ensure alternance of single and double bonds.
+            '''
+            cyclic_bond_orders = [bond_orders[-1]] + list(bond_orders) + [bond_orders[0]]
+            for pair_of_bond_orders in zip(cyclic_bond_orders, [cyclic_bond_orders[-1]] + cyclic_bond_orders[:-1]):
+                if set(pair_of_bond_orders) == {1, 2}:
+                    continue
+                else:
+                    return False
+            else:
+                return True
+
+        def is_aromatic_ring(ring: List[int]) -> bool:
+            if len(ring) % 2 == 0:
+                # For even-membered rings, ensure alternance of single and double bonds, and ensure Huckel's rule is enforced.
+                return is_bond_sequence_aromatic(ring_bond_orders[ring]) and is_hucklel_compatible(ring_bond_orders[ring])
+            else:
+                # For odd-membered rings, include sp2 (pi electrons) lone pairs, and ensure Huckel's rule is enforced.
+                non_bonded_pairs = reduce(
+                    lambda acc, e: acc + e,
+                    [[2 for _ in range(0, self.non_bonded_electrons[atom_id] // 2)] for atom_id in ring if is_sp2(atom_id)],
+                    [],
+                )
+                return is_hucklel_compatible(ring_bond_orders[ring] + non_bonded_pairs)
+
+        #self.aromatic_bonds = set()
+        # set aromatic flag and bond order in bond objects
+        for ring in rings:
+            if is_aromatic_ring(ring):
+                for a1, a2 in ring_bonds[ring]:
+                    self.get_bond(a1, a2).order = AROMATIC_BOND_ORDER
+                    # TODO: CHECK THIS!!!
+
+    def assign_hybridisations_and_valences(self):
+        """
+        Use valency and non-bonded electron info to assign
+        hybdridisations to each atom.
+        :return:
+        """
+
+        assert all([x is not None for x in self.non_bonded_electrons])
+
+        neighbour_counts = self.neighbour_counts
+
+        for atom in self.atom_objects:
+
+            # assign valences
+            atom.valence = neighbour_counts[atom.get_index()]
+
+            # assign hybirdisations
+            if max(FULL_VALENCES[atom.element.upper()]) > 1:
+                atom.hybridisation = neighbour_counts[atom.get_index()] + self.non_bonded_electrons[atom.get_index()] // 2 - 1
+            else:
+                atom.hybridisation = 0  # monovalent atoms
+
+    def assign_conjugated_atoms(self):
+        """
+        Use hybridisation info of atoms to determine whether given
+        heavy atoms are conjugated or not.
+        :return:
+        """
+
+        assert all([x is not None for x in self.hybridisations])
+        assert all([x is not None for x in self.non_bonded_electrons])
+
+        first_neighbours = self.first_neighbours
+        neighbour_counts = self.neighbour_counts
+
+        conjugated_atoms = {}
+        hybridisation_scores = {}
+        for atom in self.atom_objects:
+
+            num_heavy_atom_neighbours = len([neighbour_id for neighbour_id in first_neighbours[atom.get_index()]
+                                             if self.get_atom(neighbour_id).element != 'H'])
+
+            if num_heavy_atom_neighbours > 1:
+
+                # get normalised hybridisation score:
+                # (sum(hybridisations of atom and its neighbours) - No. Lone Pairs) / Number of atoms involved in calc
+                # this was designed to account for conjugation involving C/N/O as a central atom,
+                # giving a numerical score which has been tested to distinguish between conjugated and non-conjugated atoms
+                hybridisation_sum = sum([self.hybridisations[atom.get_index()]] + [self.hybridisations[neighbour_id]
+                                                                             for neighbour_id in first_neighbours[atom.get_index()]
+                                                                             if max(FULL_VALENCES[self.get_atom(neighbour_id).element.upper()]) > 1])
+
+                num_heavy_atoms_in_calc = (len([neighbour_id
+                                            for neighbour_id in first_neighbours[atom.get_index()]
+                                            if self.get_atom(neighbour_id).element != 'H']) + 1)
+
+                normalised_hybridisation = (hybridisation_sum - self.non_bonded_electrons[atom.get_index()] // 2) / num_heavy_atoms_in_calc
+
+                hybridisation_scores[atom.get_index()] = normalised_hybridisation
+
+                # Conjugation variable CJ = 1 if normalised_hybridisation <= 2.25
+                self.get_atom(atom.get_index()).is_conjugated = 1 if normalised_hybridisation <= 2.25 else 0
+
+            else:
+                self.get_atom(atom.get_index()).is_conjugated = 0
+
+        # print("Norm Hybridisation Scores: ", hybridisation_scores)
+        # print("Conjugated atoms: ", self.conjugated_atoms)
+
+    def get_fragments_around_elements(self, elements: set, max_depth: int, restrict_arom: bool = False) -> graph:
+        """
+        Use a Breadth-First Traversal of the molecular graph around groups of interest
+        and return the molecular fragments covered by the traversal. Useful for analysis
+        of regions of a molecule.
+
+        :param elements: elements used to specify where to start each search
+        :param max_depth: the maximum depth of the search about each element
+        :return: frag_marked: a dictionary of {central atom id --> set(atom ids in the fragment)}
+
+        TODO: in the future we can make this more general than just using elements.
+        """
+
+        marked_frags = {}
+
+        # run graph traversal search starting at all groups
+        for e in elements:
+
+            # create list of all atom indices of each specific group
+            g_ids = [a_id for a_id, a in self.atoms.items() if a.element == e]
+
+            # do BFS search starting from each atom of the given element type
+            for g_id in g_ids:
+                search_queue = queue.Queue()
+                search_queue.put((g_id, 0))  # queue item is: (a_id, depth)
+                marked_frags[g_id] = set()
+                while not search_queue.empty():
+                    print(search_queue.queue)
+
+                    # pop queue
+                    a_id, depth = search_queue.get()
+
+                    # if restrict_arom and a_id in self.aromatic_atoms:
+                    #     # TODO: implement aromatic atom property
+                    #     continue
+
+                    # add atom id to marked group fragment and get neighbouring ids
+                    marked_frags[g_id].add(a_id)
+                    n_ids = set(self.graph.neighbors(a_id))
+
+                    # get H atom ids and heavy atom neighbour ids
+                    h_ids = set(n_id for n_id in n_ids if self.get_atom(n_id).element == 'H')
+                    heavy_ids = n_ids.difference(h_ids)
+
+                    # add h_ids to marked fragment
+                    for h_id in h_ids:
+                        marked_frags[g_id].add(h_id)
+
+                    if depth == max_depth:
+                        # stop BFS at max depth
+                        pass
+                    else:
+                        # add unvisited neighbours to search
+                        for n_id in heavy_ids:
+                            if not n_id in marked_frags[g_id]:
+                                search_queue.put((n_id, depth + 1))
+
+        return marked_frags
+
+    def add_fragment(self, index: str, atom_ids: set):
+        """
+        Adds an indexed fragment as a subgraph view of the molecular graph
+        containing only atoms in the input list. Uses atom names as indices.
+        The returned subgraph view's attributes are linked to the base graph.
+        :return: nx.graph sub-graph view of specified fragment.
+        """
+        fragment = self.graph.subgraph(atom_ids)
+        self._fragments[index] = fragment
+        return fragment
+
+    def get_fragment(self, index: str):
+        return self._fragments.get(index)
+
+    def get_pdb_str(self):
+        """
+        Return the molecule as a pdb file.
+        :return:
+        """
+
+
         return
 
 
@@ -505,14 +883,23 @@ class _3DChemicalObj(_2DChemicalObj):
     def __init__(self, atoms, bonds, name: str = ''):
         super().__init__(atoms, bonds, name)
 
-    def add_atom(self, atom: Atom3D):
-        if not isinstance(atom, Atom3D): # not sure if we actually want to add atoms this way
-            # might make it  easier to enforce minimum information
-            raise TypeError('atom must be of type Atom2D')
-        
-    def add_bond(self, bond: Bond3D):
-        if not isinstance(bond, Bond3D):
-            raise TypeError('bond must be of type Bond')
+    # def add_atom(self, atom: Atom3D):
+    #     if not isinstance(atom, Atom3D): # not sure if we actually want to add atoms this way
+    #         # might make it  easier to enforce minimum information
+    #         raise TypeError('atom must be of type Atom2D')
+
+    # def add_bond(self, atom1_name: str, atom2_name: str, bond: Bond3D) -> None:
+    #     """
+    #     :param bond:
+    #     :return:
+    #     """
+    #     if not isinstance(bond, Bond3D):
+    #         raise TypeError('bond must be of type Bond')
+    #
+    #     if atom1_name not in self._graph.nodes or atom2_name not in self._graph.nodes:
+    #         raise IndexError
+    #
+    #     self._graph.add_edge(atom1_name, atom2_name, bond)
 
     @property
     def atom_coord_matrix(self):

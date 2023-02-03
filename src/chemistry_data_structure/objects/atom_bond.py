@@ -2,7 +2,7 @@
 Contains abstract and implemented classes representing atoms and bonds.
 """
 import copy
-from typing import Tuple, Any
+from typing import Tuple, Any, Mapping
 
 Coordinate = Tuple[float, float, float]
 
@@ -40,8 +40,10 @@ class _Atom:
         self._attributes = {}
 
         # self.name = name
+        self.full_valence = None
         self.valence = None
         self.formal_charge = None
+        self.valence_electrons = None
         self.non_bonded_electrons = None
         self.hybridisation = None
         self.is_aromatic = None
@@ -50,10 +52,15 @@ class _Atom:
         self.radical_electrons = 0
         self.stereo = None
 
+        if 'full_valence' in kwargs:
+            self.valence = kwargs['full_valence']
         if 'valence' in kwargs:
             self.valence = kwargs['valence']
         if 'formal_charge' in kwargs:
             self.formal_charge = kwargs['formal_charge']
+        if 'valence_electrons' in kwargs:
+            assert type(kwargs['valence_electrons']) == int
+            self.valence_electrons = kwargs['valence_electrons']
         if 'non_bonded_electrons' in kwargs:
             self.non_bonded_electrons = kwargs['non_bonded_electrons']
         if 'hybridisation' in kwargs:
@@ -128,7 +135,9 @@ class _Atom:
         :return:
         """
         # TODO raise warning if overlap between index and dictionary
-        self._attributes.__setitem__(key, value)
+        self.__dict__[key] = value
+        #self._attributes.__setitem__(key, value)
+        #print(f"Key to Update: {key} with Value: {value}")
 
     def __contains__(self, item):
         """
@@ -149,7 +158,7 @@ class _Atom:
     def copy(self):
         return self.__dict__.copy()
 
-    def update(self):
+    def update(self, other=None, **kwargs):
         """
         Pass thorough dictionary methods to the attributes dictionary to maintain compatibility with networkx
         Networkx requires dict of dict of dict structure
@@ -157,7 +166,11 @@ class _Atom:
         :param value:
         :return:
         """
-        raise NotImplemented
+        if other is not None:
+            for k, v in other.items() if isinstance(other, Mapping) else other:
+                self.__setitem__(k, v)
+        for k, v in kwargs.items():
+            self.__setitem__(k, v)
 
 
 class Atom2D(_Atom):
@@ -221,7 +234,8 @@ class _Bond:
 
     def __init__(self, **kwargs):
         self._attributes = {}
-        self._atoms = set()
+        self._atoms = {}
+        self.order = None
 
         if 'order' in kwargs:
             self.order = kwargs['order']
@@ -233,7 +247,8 @@ class _Bond:
 
     def __setitem__(self, key, value):
         # might need to set this up given the way networkx interfaces
-        self._attributes.__setitem__(key, value)
+        #self._attributes.__setitem__(key, value)
+        self.__dict__[key] = value
 
     def __contains__(self, item):
         return self._attributes.__contains__(item)
@@ -241,11 +256,33 @@ class _Bond:
     def copy(self):
         return self.__dict__.copy()
 
-    def update(self):
-        raise NotImplementedError
+    def update(self, other=None, **kwargs):
+        """
+        Pass thorough dictionary methods to the attributes dictionary to maintain compatibility with networkx
+        Networkx requires dict of dict of dict structure
+        """
+        if other is not None:
+            for k, v in other.items() if isinstance(other, Mapping) else other:
+                self.__setitem__(k, v)
+        for k, v in kwargs.items():
+            self.__setitem__(k, v)
 
     def get(self, *args, **kwargs):
         return self._attributes.get(*args, **kwargs)
+
+    def get_order(self) -> int:
+        return self.order
+
+    def set_order(self, order: int):
+        # TODO: I don't know if this is what we have in mind, i.e. getters/setters
+        #   or if we want to use a more general method, but i'm writing this for use in the
+        #   short term
+        tmp = self.order
+        self.order = order
+        print(f"Order was set from {tmp} to {self.order}")
+
+    def get_atoms(self):
+        return self._atoms
 
 
 class Bond2D(_Bond):
