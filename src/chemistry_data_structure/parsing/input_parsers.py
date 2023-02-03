@@ -91,6 +91,20 @@ def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
     )
 
 
+def pdb_index_parser(pdb_str: str):
+    template_exp = '(?<=(HETATM|ATOM  ))(.*)'
+    # so far these are the only lines we care about exporting
+    parser = re.compile(template_exp)
+    atm_lines = parser.findall(pdb_str)
+    id_map = {}
+    for line in atm_lines:
+        split_line = line[1].strip().split()
+        GAMESS_id = split_line[0]
+        atom_name = split_line[1]
+        id_map[int(GAMESS_id)] = atom_name
+    return id_map
+
+
 def pdb_to_Molecule3D(pdb_str: str,
                       mol_name: str = "",
                       net_charge: int = None,
@@ -177,67 +191,46 @@ class BlockException(Exception):
     pass
 
 
-def GAMESS_to_Molecule3D(
-        GAMESS_log: str,
-        mol_name: str = '',
-        units='Bohr') -> Molecule3D:
-    """
-    Function for generating 3d molecules from GAMESS qm logs
-    Parser, mostly copied from fieldfit interface, but with significant speedups
-    :param units: Bohr or Angs (Angstrom)
-    :param GAMESS_log: string of the gamess log being parsed
-    :param mol_name: name of the molecule
-    :return: Molecule3D object with the information from the log
-    """
-    # todo gamess log has valence information
-    # todo it willl be worth investing in the most efficient way to parse the esp field into numerical data
-    # this parser takes ~0.2 seconds might add option to not parse the qm logs
-    # mmap may be a solution but there is debate
-
+def _GAMESS_parser(GAMESS_log: str, units: str = 'Bohr', id_map=None):
     if units == 'Bohr':
         coord_unit_conversion = BOHR_PER_ANG
     elif units == 'Angs':
         coord_unit_conversion = 1
     else:
-        raise Exception('Unrocognised units')
-
+        raise Exception('Unrecognised units')
     # this locates the equilibrium geometry block
     # need to escape asterixes and newlines in regex
     # ATOM_BLOCK_HEADING = r"      \*\*\*\*\* EQUILIBRIUM GEOMETRY LOCATED \*\*\*\*\*\n COORDINATES OF ALL ATOMS ARE \(ANGS\)\n   ATOM   CHARGE       X              Y              Z\n ------------------------------------------------------------\n"
-
     # `Y{x}` matches Y, x times, Y can be a space
-    ATOM_BLOCK_HEADING = r" {6}\*{5} EQUILIBRIUM GEOMETRY LOCATED \*{5}\n COORDINATES OF ALL ATOMS ARE \(ANGS\)\n   ATOM   CHARGE {7}X {14}Y {14}Z\n -{60}\n"
 
+    if id_map is not None:
+        mapping = lambda x: id_map[x]
+    else:
+        mapping = lambda x: x
+
+    ATOM_BLOCK_HEADING = r" {6}\*{5} EQUILIBRIUM GEOMETRY LOCATED \*{5}\n COORDINATES OF ALL ATOMS ARE \(ANGS\)\n   ATOM   CHARGE {7}X {14}Y {14}Z\n -{60}\n"
     # NEXT_BLOCK_HEADING = r"          INTERNUCLEAR DISTANCES \(ANGS\.\)\n          ------------------------------"
     NEXT_BLOCK_HEADING = r" {10}INTERNUCLEAR DISTANCES \(ANGS\.\)\n {10}-{30}"
-
     # units are in angstroms
     # todo need to check if there is some method for tracking this
-
     compile_str = f"(?<={ATOM_BLOCK_HEADING})[\\s\\S]+?(?={NEXT_BLOCK_HEADING})"
     parser = re.compile(compile_str)
     atom_result = parser.findall(GAMESS_log)
     if not atom_result:
         raise BlockException("Equilibrium Atom Block not found")
-
     # index for gamess are done in the order they appear in the log
-
     # fetching the bond/valence block
     BOND_BLOCK_HEADING = r" {19}BOND {23}BOND {23}BOND\n  ATOM PAIR DIST  ORDER      ATOM PAIR DIST  ORDER      ATOM PAIR DIST  ORDER"
-
     # VALENCE_BLOCK_HEADING = r"\n                       TOTAL       BONDED        FREE\n      ATOM            VALENCE     VALENCE     VALENCE"
     VALENCE_BLOCK_HEADING = r" {23}TOTAL       BONDED        FREE\n {6}ATOM {12}VALENCE     VALENCE     VALENCE"
-
     # NEXT_BLOCK_HEADING = r"\n          ---------------------\n          ELECTROSTATIC MOMENTS\n          ---------------------"
     # NEXT_BLOCK_HEADING = r" {10}-{21}\n {10}ELECTROSTATIC MOMENTS\n {10}-{21}"
     # ALT_comment = r"    \*\*\*\* A SOLVENT MODEL IS IN USE IN THIS RUN \*\*\*\*"
-
     compile_str = f"(?<={BOND_BLOCK_HEADING})[\\s\\S]+?(?={VALENCE_BLOCK_HEADING})"
     parser = re.compile(compile_str)
     bond_result = parser.findall(GAMESS_log)
     if not bond_result:
         raise BlockException("Equilibrium Bond Block not found")
-
     # compile_str = f"(?<={VALENCE_BLOCK_HEADING})[\\s\\S]+?(?={NEXT_BLOCK_HEADING}|{ALT_comment})"
     compile_str = f"(?<={VALENCE_BLOCK_HEADING})[\\s\\S]+?(?=\n\n)"
     parser = re.compile(compile_str)
@@ -248,7 +241,6 @@ def GAMESS_to_Molecule3D(
     for line in valence_result[0].strip('\n').split('\n'):
         index, element, tot_val, bond_val, free_val = line.split()
         valencies[int(index)] = float(tot_val)
-
     # parsing the qm esp grid (units of BOHRs)
     # the esp grid has some arbitrary comments/headings in odd places making the regex a bit complex
     # requires putting the relevent data in group one and extracting it as such
@@ -265,30 +257,44 @@ def GAMESS_to_Molecule3D(
     for index, line in enumerate(atom_result[0].strip('\n').split('\n')):
         index += 1  # indexes start at 1
         element, atomic_charge, x, y, z = line.split()
-        atom_name = f'{element}{index}'  # TODO need to check if there are underscores between these
+        GAMESS_name = f'{element}{index}'
+        if id_map is None:
+            atom_name = GAMESS_name  # TODO need to check if there are underscores between these
+            index_data = {'index': index,
+                          'GAMESS_index': index,
+                          'GAMESS_name': GAMESS_name}
+        else:
+            atom_name = mapping(index)
+            index_data = {'index': index,
+                          'GAMESS_index': index,
+                          'GAMESS_name': GAMESS_name,
+                          'pdb_name': atom_name}
         atoms[index] = Atom3D(
             name=atom_name,
             element=element,
-            coordinates=[float(c) * coord_unit_conversion for c in [x, y, z]], # convert from angstrom
-            index={'index': index},
-            formal_charge=float(atomic_charge),  # todo need to check if these are the right charges, also not wokring
+            coordinates=[float(c) * coord_unit_conversion for c in [x, y, z]],  # convert from angstrom
+            index=index_data,
+            formal_charge=float(atomic_charge),  # todo need to check if these are the right charges, also not working
             valence=valencies[index]
 
         )
-
     bonds = []
     for line in bond_result[0].strip('\n').split('\n'):
         # up to 3 groups per line
         elements = line.split()
-        num_groups = len(elements)//4
+        num_groups = len(elements) // 4
         groups = []
         for i in range(num_groups):
-            groups.append([elements[jj+i*4] for jj in range(4)])
+            groups.append([elements[jj + i * 4] for jj in range(4)])
 
         for g in groups:
             id1, id2, distance, bond_order = g
-            atom1_name = atoms[int(id1)].name
-            atom2_name = atoms[int(id2)].name
+            if id_map is not None:
+                atom1_name = mapping(int(id1))
+                atom2_name = mapping(int(id2))
+            else:
+                atom1_name = atoms[int(id1)].name
+                atom2_name = atoms[int(id2)].name
 
             bonds.append((
                 atom1_name,
@@ -296,12 +302,59 @@ def GAMESS_to_Molecule3D(
                 Bond3D(order=float(bond_order))
             )
             )
+    return atoms, bonds, esp_grid_charges, esp_grid_coords
+
+
+def GAMESS_to_Molecule3D(
+        GAMESS_log: str,
+        mol_name: str = '',
+        units='Bohr') -> Molecule3D:
+    """
+    Function for generating 3d molecules from GAMESS qm logs
+    Parser, mostly copied from fieldfit interface, but with significant speedups
+    :param units: Bohr or Angs (Angstrom)
+    :param GAMESS_log: string of the gamess log being parsed
+    :param mol_name: name of the molecule
+    :return: Molecule3D object with the information from the log
+    """
+    # todo GAMESS log has valence information
+    # todo it will be worth investing in the most efficient way to parse the esp field into numerical data
+    # this parser takes ~0.2 seconds might add option to not parse the qm logs
+    # mmap may be a solution but there is debate
+
+    atoms, bonds, esp_grid_charges, esp_grid_coords = _GAMESS_parser(GAMESS_log, units)
 
     return Molecule3D(atoms=list(atoms.values()),
                       bonds=bonds,
-                      esp_grid_coords = esp_grid_coords,
-                      esp_grid_charge = esp_grid_charges
+                      esp_grid_coords=esp_grid_coords,
+                      esp_grid_charge=esp_grid_charges
                       )
+
+
+def GAMESS_pdb_to_Molecule3D(
+        pdb_str: str,
+        GAMESS_str: str,
+):
+    """
+    This molecule should have been imediately initialised with a GAMMESS Parser
+    :param pdb_str:
+    :param molecule:
+    :return:
+    """
+
+    id_map = pdb_index_parser(pdb_str)
+    atoms, bonds, esp_grid_charges, esp_grid_coords = _GAMESS_parser(GAMESS_log=GAMESS_str,
+                                                                     id_map=id_map)
+
+    return Molecule3D(atoms=list(atoms.values()),
+                      bonds=bonds,
+                      esp_grid_coords=esp_grid_coords,
+                      esp_grid_charge=esp_grid_charges
+                      )
+
+
+class BlockException(Exception):
+    pass
 
 
 if __name__ == '__main__':
@@ -316,7 +369,6 @@ if __name__ == '__main__':
     with open('../test/data/qm/451_b3lyp_631Gd.out', 'r') as f:
         test2 = GAMESS_to_Molecule3D(f.read(), units='Bohr')
         print(test2.partialChargeFit())
-        print(test2.partialChargeFit(solver = 'pulp'))
-        print(test2.partialChargeFit(solver = 'gurobi', method='round'))
+        print(test2.partialChargeFit(solver='pulp'))
+        print(test2.partialChargeFit(solver='gurobi', method='round'))
         # print(test2.partialChargeFit(method='ILP', minmax=True))
-

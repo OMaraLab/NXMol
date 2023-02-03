@@ -2,3 +2,5 @@
 *__pycache__/
 helpers/__pycache__/
 parsing/__pycache__/
+build/
+src/chemistry_data_structure.egg-info/

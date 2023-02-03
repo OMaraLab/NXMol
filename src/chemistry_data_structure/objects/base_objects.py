@@ -170,6 +170,12 @@ class _2DChemicalObj:
         self._graph.add_node(atom.name)
         self._graph._node[atom.name] = atom
 
+    def rename_atom(self, atom: Atom2D, name):
+        nx.relabel_nodes(self._graph,
+                         {atom.name: name},
+                         copy=False)
+        atom._index['name'] = name
+
     def add_bond(self, a1: str, a2: str, bond: Bond2D) -> None:
         """
         :param bond:
