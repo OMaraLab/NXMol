@@ -15,11 +15,7 @@ def lewis_graph(molecule: _2DChemicalObj, use_non_bonded_electrons: bool = True)
     '''
     G = Graph()
 
-    print(molecule.atoms)
     for a_id in molecule.atoms:
-        print(a_id)
-        print("Atom: ", molecule.get_atom(a_id))
-        #TODO: NOT FINDING ATOM!!!???
         G.add_node(
             a_id,
             element=molecule.get_atom(a_id).element,
@@ -33,12 +29,11 @@ def lewis_graph(molecule: _2DChemicalObj, use_non_bonded_electrons: bool = True)
 
 
 def are_atoms_equivalent(node_1: _Atom, node_2: _Atom) -> bool:
-    return node_1.__dict__['element'] == node_2.__dict__['element'] \
-           and node_1.__dict__['non_bonded_electrons'] == node_2.__dict__['non_bonded_electrons']
+    return node_1['element'] == node_2['element'] and node_1['non_bonded_electrons'] == node_2['non_bonded_electrons']
 
 
 def are_edges_equivalent(edge_1: _Bond, edge_2: _Bond) -> bool:
-    return edge_1.__dict__['order'] == edge_2.__dict__['order']
+    return edge_1['order'] == edge_2['order']
 
 
 def are_graphs_isomorphic(
