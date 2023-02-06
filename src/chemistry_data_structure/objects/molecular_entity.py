@@ -2,14 +2,20 @@ import networkx as nx
 import numpy as np
 from scipy.spatial import distance_matrix
 
+from chemistry_data_structure.src.chemistry_data_structure.helpers.chem import LINEAR, TRIGONAL_PLANAR, \
+    TRIGONAL_PLANAR_BOND_ANGLE, TETRAHEDRAL, TETRAHEDRAL_BOND_ANGLE
+
 try:
     import gurobipy as gp
     from gurobipy import GRB
 except ModuleNotFoundError:
     pass
 
-from chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
-from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, RDKitAtom, RDKitBond
+from chemistry_data_structure.src.chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
+from chemistry_data_structure.src.chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, RDKitAtom, RDKitBond
+from chemistry_data_structure.src.chemistry_data_structure.helpers.vector_calculations import place_first_hydrogen, \
+    gromos_tetrahedral_1H, gromos_trigonal_planar_1H, gromos_trigonal_planar_2H, gromos_tetrahedral_from_2_vectors, \
+    gromos_tetrahedral_3H
 from typing import List, Union
 
 
@@ -82,7 +88,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         distance_pairs = distance_matrix(self._esp_grid_coords, self.atom_coord_matrix)
         # atom coords read in as BOHR, might just convert this to Metres
         A = 1 / distance_pairs  # don't need constant in a.u.
-        b = molecule._esp_grid_charge.reshape(-1, 1)
+        b = self._esp_grid_charge.reshape(-1, 1)
         partialChargeVector = np.array([a.partial_charge for a in self.atom_objects]).reshape(-1, 1)
         return np.sqrt(1 / self.num_atoms * sum((A @ partialChargeVector - b) ** 2))
 
@@ -93,9 +99,11 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         """
         Places new hydrogens into simple idealised geometries to later be optimised
         by subsequent MMF/QM calculations.
-        TODO: THIS!!!
+        TODO: This does not work yet, this needs to be fixed!!!
 
         """
+
+        from numpy import array as vector
 
         # find new neighbours
         first_neighbours = self.first_neighbours
@@ -130,7 +138,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                 continue
 
             # get atom coordinates
-            points = [vector(heavy_atom.coordinates)]
+            points = [np.vector(heavy_atom.coordinates)]
             for atom in fixed_neighbour_atoms:
                 points.append(vector(atom.coordinates))
 
@@ -200,6 +208,20 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     capped=True,
                     coordinates=new_coordinates[n],
                 )
+
+    def writeMol2(self):
+        """
+        Outputs molecule as mol2 file.
+        :return:
+        TODO: Finish this!!!
+        """
+
+        Mol2Template = '''
+        @<TRIPOS>MOLECULE
+        *****
+         {num_atoms} {num_bonds} 0 0 0
+        SMALL
+        GASTEIGER'''
 
 
 class RDKitMolecule(_3DChemicalObj):

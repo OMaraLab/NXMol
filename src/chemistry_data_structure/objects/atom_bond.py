@@ -2,7 +2,7 @@
 Contains abstract and implemented classes representing atoms and bonds.
 """
 import copy
-from typing import Tuple, Mapping
+from typing import Tuple, Any, Mapping
 
 Coordinate = Tuple[float, float, float]
 
@@ -83,6 +83,12 @@ class _Atom:
         else:
             raise AtomIndexError(f'Id type {id_type} not associated with this atom')
 
+    def set_index(self, id_type: str, value: Any, overwrite: bool = False):
+        if not overwrite:
+            if id_type in self._index:
+                raise AtomIndexError(f'Index {id_type} already exists! specify overwrite=True to overwrite')
+        self._index[id_type] = value
+
     @property
     def name(self):
         """
@@ -91,14 +97,14 @@ class _Atom:
         """
         return self._index['name']
 
-    @name.setter
-    def name(self, value):
-        """
-        Method for renaming atoms
-        :param value:
-        :return:
-        """
-        self._index['name'] = value
+    # @name.setter
+    # def name(self, value):
+    #     """
+    #     Method for renaming atoms
+    #     :param value:
+    #     :return:
+    #     """
+    #     self._index['name'] = value
 
     def __repr__(self):
         """

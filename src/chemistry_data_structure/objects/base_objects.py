@@ -4,17 +4,14 @@ from sys import stderr
 
 import networkx as nx
 from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet
-
-import pulp
 import numpy as np
 from matplotlib import pyplot as plt
-
-from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
+from chemistry_data_structure.src.chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
     AROMATIC_BOND_ORDER
-from chemistry_data_structure.helpers.io import write_to_debug
-from chemistry_data_structure.helpers.rings import bonds_for_ring
-from chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D, _Bond, _Atom
-from chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
+from chemistry_data_structure.src.chemistry_data_structure.helpers.io import write_to_debug
+from chemistry_data_structure.src.chemistry_data_structure.helpers.rings import bonds_for_ring
+from chemistry_data_structure.src.chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D, _Bond, _Atom
+from chemistry_data_structure.src.chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
 
 ELEMENT_COLOURS = {'H': '#eeeeee',
                    'C': 'grey',
@@ -169,6 +166,12 @@ class _2DChemicalObj:
             raise IndexError # Error type subject to change
         self._graph.add_node(atom.name)
         self._graph._node[atom.name] = atom
+
+    def rename_atom(self, atom: Atom2D, name):
+        nx.relabel_nodes(self._graph,
+                         {atom.name: name},
+                         copy=False)
+        atom._index['name'] = name
 
     def add_bond(self, a1: str, a2: str, bond: Bond2D) -> None:
         """

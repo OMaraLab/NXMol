@@ -1,3 +1,11 @@
+from math import pi
+
+LINEAR = 2
+TRIGONAL_PLANAR = 3
+TETRAHEDRAL = 4
+TETRAHEDRAL_BOND_ANGLE = 109.5 * (pi / 180)
+TRIGONAL_PLANAR_BOND_ANGLE = 120 * (pi / 180)
+
 VALENCE_ELECTRONS = {
     'H': 1, 'HE': 2,
     'LI': 1, 'BE': 2, 'B': 3, 'C': 4, 'N': 5, 'O': 6, 'F': 7, 'NE': 8,
@@ -34,5 +42,4 @@ ELECTRONEGATIVITIES = {
 # unit conversions
 BOHR_PER_ANG = 1.8897259885789  # taken straight from the field_fit_interface
 BOHR_PER_NM = BOHR_PER_ANG * 10.
-
 AROMATIC_BOND_ORDER = 1.5
