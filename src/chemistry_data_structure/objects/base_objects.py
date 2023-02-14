@@ -8,10 +8,10 @@ import numpy as np
 from matplotlib import pyplot as plt
 from chemistry_data_structure.src.chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
     AROMATIC_BOND_ORDER
-from chemistry_data_structure.src.chemistry_data_structure.helpers.io import write_to_debug
-from chemistry_data_structure.src.chemistry_data_structure.helpers.rings import bonds_for_ring
-from chemistry_data_structure.src.chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D, _Bond, _Atom
-from chemistry_data_structure.src.chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
+from chemistry_data_structure.helpers.io import write_to_debug
+from chemistry_data_structure.helpers.rings import bonds_for_ring
+from chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D, _Bond, _Atom
+from chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
 
 ELEMENT_COLOURS = {'H': '#eeeeee',
                    'C': 'grey',

@@ -7,10 +7,10 @@ import re
 from io import StringIO
 
 import numpy as np
-from chemistry_data_structure.src.chemistry_data_structure.objects.molecular_entity import Molecule3D
-from chemistry_data_structure.src.chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
-from chemistry_data_structure.src.chemistry_data_structure.parsing.pdb import bonds_for_pdb_line, is_pdb_connect_line, pdb_atoms_in
-from chemistry_data_structure.src.chemistry_data_structure.helpers.chem import BOHR_PER_ANG, BOHR_PER_NM, FULL_VALENCES, VALENCE_ELECTRONS
+from chemistry_data_structure.objects.molecular_entity import Molecule3D
+from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
+from chemistry_data_structure.parsing.pdb import bonds_for_pdb_line, is_pdb_connect_line, pdb_atoms_in
+from chemistry_data_structure.helpers.chem import BOHR_PER_ANG, BOHR_PER_NM, FULL_VALENCES, VALENCE_ELECTRONS
 
 
 ############# mol2 Parser
@@ -189,24 +189,6 @@ def pdb_to_Molecule3D(pdb_str: str,
 
 class BlockException(Exception):
     pass
-
-
-def GAMESS_to_Molecule3D(
-        GAMESS_log: str,
-        mol_name: str = '',
-        units='Bohr') -> Molecule3D:
-    """
-    Function for generating 3d molecules from GAMESS qm logs
-    Parser, mostly copied from fieldfit interface, but with significant speedups
-    :param units: Bohr or Angs (Angstrom)
-    :param GAMESS_log: string of the gamess log being parsed
-    :param mol_name: name of the molecule
-    :return: Molecule3D object with the information from the log
-    """
-    # todo gamess log has valence information
-    # todo it willl be worth investing in the most efficient way to parse the esp field into numerical data
-    # this parser takes ~0.2 seconds might add option to not parse the qm logs
-    # mmap may be a solution but there is debate
 
 
 def _GAMESS_parser(GAMESS_log: str, units: str = 'Bohr', id_map=None):

@@ -3,13 +3,11 @@ Contains methods for performing transformations on molecular entities etc.
 """
 import networkx as nx
 import copy
-
 from chemistry_data_structure.helpers.chem import VALENCE_ELECTRONS
 from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D
 from chemistry_data_structure.objects.base_objects import _2DChemicalObj
 from chemistry_data_structure.objects.molecular_entity import Molecule2D
 from networkx.algorithms import isomorphism
-
 from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D
 
 

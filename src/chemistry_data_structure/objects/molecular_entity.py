@@ -11,9 +11,9 @@ try:
 except ModuleNotFoundError:
     pass
 
-from chemistry_data_structure.src.chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
-from chemistry_data_structure.src.chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, RDKitAtom, RDKitBond
-from chemistry_data_structure.src.chemistry_data_structure.helpers.vector_calculations import place_first_hydrogen, \
+from chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
+from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, RDKitAtom, RDKitBond
+from chemistry_data_structure.helpers.vector_calculations import place_first_hydrogen, \
     gromos_tetrahedral_1H, gromos_trigonal_planar_1H, gromos_trigonal_planar_2H, gromos_tetrahedral_from_2_vectors, \
     gromos_tetrahedral_3H
 from typing import List, Union

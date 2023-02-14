@@ -3,8 +3,8 @@ from typing import List, Tuple, Callable, Sequence
 from networkx import Graph
 from networkx.algorithms import is_isomorphic
 
-from chemistry_data_structure.src.chemistry_data_structure.objects.atom_bond import _Atom, _Bond
-from chemistry_data_structure.src.chemistry_data_structure.objects.base_objects import _2DChemicalObj
+from chemistry_data_structure.objects.atom_bond import _Atom, _Bond
+from chemistry_data_structure.objects.base_objects import _2DChemicalObj
 
 
 def lewis_graph(molecule: _2DChemicalObj, use_non_bonded_electrons: bool = True) -> Graph:
