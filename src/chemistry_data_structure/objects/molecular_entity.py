@@ -2,7 +2,7 @@ import networkx as nx
 import numpy as np
 from scipy.spatial import distance_matrix
 
-from chemistry_data_structure.src.chemistry_data_structure.helpers.chem import LINEAR, TRIGONAL_PLANAR, \
+from chemistry_data_structure.helpers.chem import LINEAR, TRIGONAL_PLANAR, \
     TRIGONAL_PLANAR_BOND_ANGLE, TETRAHEDRAL, TETRAHEDRAL_BOND_ANGLE
 
 try:

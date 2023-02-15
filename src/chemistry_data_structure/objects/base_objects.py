@@ -6,7 +6,7 @@ import networkx as nx
 from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet
 import numpy as np
 from matplotlib import pyplot as plt
-from chemistry_data_structure.src.chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
+from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
     AROMATIC_BOND_ORDER
 from chemistry_data_structure.helpers.io import write_to_debug
 from chemistry_data_structure.helpers.rings import bonds_for_ring
