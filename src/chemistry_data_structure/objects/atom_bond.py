@@ -181,12 +181,18 @@ class Atom2D(_Atom):
     def __init__(self, name, element, **kwargs):
         super().__init__(name, element, **kwargs)
 
+    def __str__(self):
+        return f"Atom3D(Name: {self.name}, Element: {self.element})"
+
 
 class Atom3D(_Atom):
 
     def __init__(self, name, element, coordinates, **kwargs):
         super().__init__(name, element, **kwargs)
-        self.coordinates = coordinates
+        self.coordinates: tuple = coordinates
+
+    def __str__(self):
+        return f"Atom3D(Name: {self.name}, Element: {self.element}, Coords: {self.coordinates})"
 
 
 class RDKitAtom(_Atom):

@@ -838,8 +838,8 @@ class _2DChemicalObj:
                     heavy_ids = n_ids.difference(h_ids)
 
                     # add h_ids to marked fragment
-                    for h_id in h_ids:
-                        marked_frags[g_id].add(h_id)
+                    # for h_id in h_ids:
+                    #     marked_frags[g_id].add(h_id)
 
                     if depth == max_depth:
                         # stop BFS at max depth
@@ -871,8 +871,6 @@ class _2DChemicalObj:
         Return the molecule as a pdb file.
         :return:
         """
-
-
         return
 
 
