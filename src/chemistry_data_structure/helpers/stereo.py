@@ -8,10 +8,11 @@ BABEL_CHIRAL_EXECUTABLE = '/usr/local/bin/obchiral'
 
 def identify_chiral_centers(mol: _2DChemicalObj):
     """
-    Call OpenBabel ObChiral executable.
+    Use openbabel
     :param mol:
     :return:
     """
+
 
 
 

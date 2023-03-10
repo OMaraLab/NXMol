@@ -146,7 +146,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
         return io.getvalue()
 
-    def calculate_new_hydrogen_coordinates(self, marked_heavy_atom_ids: list):
+    def calculateNewHydrogenCoordinates(self, marked_heavy_atom_ids: list):
         """
         Places new hydrogens into simple idealised geometries to later be optimised
         by subsequent MMF/QM calculations.
@@ -259,14 +259,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
             # Update atom coordinates
             for (n, atom_id) in enumerate(h_neighbour_ids):
-                # self.atoms[atom_id] = Atom(
-                #     index=atom_id,
-                #     name='H{}'.format(atom_id),
-                #     element='H',
-                #     valence=1,
-                #     capped=True,
-                #     coordinates=new_coordinates[n],
-                # )
                 self._graph._node[atom_id] = Atom3D(
                     index={'name': atom_id},
                     name=atom_id,
@@ -279,12 +271,10 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     is_aromatic=0,
                     coordinates=new_coordinates[n],
                 )
-                #tautomer.add_atom(h_atom)
 
             print("Updated Atom: ", self.get_atom(atom_id))
 
-
-    def writeMol2(self):
+    def mol2Str(self) -> str:
         """
         Outputs molecule as mol2 file.
         :return:
@@ -297,6 +287,45 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
          {num_atoms} {num_bonds} 0 0 0
         SMALL
         GASTEIGER'''
+
+        return Mol2Template
+
+    def OBMol(self):
+        """
+        Returns an openbabel OBMol object from the current 3D NXMol object.
+        :return:
+        """
+
+        from openbabel import openbabel as ob
+        ob_mol = ob.OBMol()
+
+        # add atoms
+        ob_id = 1
+        for a_id, a in self.atoms.items():
+
+            ob_a = ob_mol.NewAtom()
+            print(a_id)
+
+            # set index
+            a.set_index('OBMol_ID', ob_id)
+            ob_a.SetId(ob_id)
+
+            # set parameters
+            ob_a.SetHyb(a.hybridisation)
+            #ob_a.SetAtomicNum(6) # carbon
+            #ob_a.SetImplicitHCount()
+            ob_a.SetFormalCharge(a.formal_charge)
+            ob_a.SetType(a.element)
+            x, y, z = a.coordinates
+            ob_a.SetVector(x, y, z)
+
+            ob_id += 1
+
+        # add bonds
+        for b_id, b in self.bonds.items():
+            ob_mol.AddBond(b_id[0], b_id[1], b.order)
+
+        print(ob_mol)
 
 
 class RDKitMolecule(_3DChemicalObj):
@@ -322,6 +351,7 @@ class RDKitMolecule(_3DChemicalObj):
 
 
 if __name__ == "__main__":
+
     # testing
 
     molecule = Molecule3D()
