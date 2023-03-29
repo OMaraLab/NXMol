@@ -223,11 +223,12 @@ class _2DChemicalObj:
         for index in indices:
             self.remove_atom(index, index_type=index_type)
 
-    def get_atom(self, index: Any, index_type='name'):
+    def get_atom(self, index: Any, index_type='name') -> Atom2D:
         if index_type == 'name':
             return self._graph.nodes[index]
         else:
-            return [a for a in self._graph._node.values() if a._index[index_type] == index][0]
+            match_list = [a for a in self._graph._node.values() if a._index[index_type] == index]
+            return match_list[0] if len(match_list) > 0 else None
             # return next((d for d in self._graph._node.values() if d[index_type] == index), None)
 
     def get_atoms(self, index: List, index_type='name'):
@@ -873,13 +874,6 @@ class _2DChemicalObj:
 
     def get_fragment(self, index: str):
         return self._fragments.get(index)
-
-    def get_pdb_str(self):
-        """
-        Return the molecule as a pdb file.
-        :return:
-        """
-        return
 
 
 class _3DChemicalObj(_2DChemicalObj):

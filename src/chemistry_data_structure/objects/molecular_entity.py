@@ -292,11 +292,12 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
     def OBMol(self):
         """
-        Returns an openbabel OBMol object from the current 3D NXMol object.
-        :return:
+        Returns an openbabel OBMol object from the current 3D NXMol object (Molecule3D).
+        :return: OBMol object.
         """
 
         from openbabel import openbabel as ob
+
         ob_mol = ob.OBMol()
 
         # add atoms
@@ -304,29 +305,43 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         for a_id, a in self.atoms.items():
 
             ob_a = ob_mol.NewAtom()
-            print(a_id)
 
             # set index
             a.set_index('OBMol_ID', ob_id)
             ob_a.SetId(ob_id)
 
             # set parameters
-            ob_a.SetHyb(a.hybridisation)
+            if a.hybridisation is not None:
+                ob_a.SetHyb(a.hybridisation)
             #ob_a.SetAtomicNum(6) # carbon
             #ob_a.SetImplicitHCount()
             ob_a.SetFormalCharge(a.formal_charge)
             ob_a.SetType(a.element)
             x, y, z = a.coordinates
-            ob_a.SetVector(x, y, z)
+            # ob_a.SetVector(x, y, z) # TODO: debug to see if 2D system works for getting stereo?
 
             ob_id += 1
 
         # add bonds
         for b_id, b in self.bonds.items():
-            ob_mol.AddBond(b_id[0], b_id[1], b.order)
+            ob_id_1 = self.get_atom(b_id[0]).get_index('OBMol_ID')
+            ob_id_2 = self.get_atom(b_id[1]).get_index('OBMol_ID')
+            ob_mol.AddBond(ob_id_1, ob_id_2, b.order)
 
-        print(ob_mol)
+        # debug
+        debug = False
+        if debug:
+            from openbabel import pybel
+            for atom in pybel.Molecule(ob_mol):
+                NXMol_ID = self.get_atom(atom.idx, index_type='OBMol_ID').get_index()
+                print("Original Atom ID: ", NXMol_ID)
+                print("Atom ID: ", atom.idx)
+                print("Atom Element: ", atom.type)
+                print("Atom Charge: ", atom.formalcharge)
+                print("Atom Valence: ", atom.degree)
 
+
+        return ob_mol
 
 class RDKitMolecule(_3DChemicalObj):
 
