@@ -6,19 +6,20 @@ import sys
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D
 import os
+import re
 import json
 from urllib.request import urlopen, urlretrieve
 from time import sleep
 import subprocess
 
+# TODO: REMOVE THIS!!
 JMOL_EXEC_PATH = 'C:\\Users\\joeho\\ATB\\jmol-16.1.7\\JmolData.jar'
-
 
 def getChiralCenters(mol: Molecule3D):
     """
     Use jmol to detect chiral centers in a molecule.
     :param mol: a 3D molecule object to determine the chirality of through its PDB representation.
-    :return:
+    :return: a dictionary of {atom_name: R/S}
     """
 
     # adjacent strings are read as one string, backslash character after " creates new line continuation in the python code
@@ -59,15 +60,24 @@ def getChiralCenters(mol: Molecule3D):
 
     # extract final dictionary of chiral centers as a string from output
     filtered_result = '{' + str(raw_result).split('{')[1].split('}')[0] + '}'
-    chiral_centers = json.loads(filtered_result)
+    chiral_centers = {}
+    for k, v in json.loads(filtered_result).items():
+        print('Original: ', k)
+        atom_info = re.split(r'(\d+)', k.strip())
+        print('Split List: ', atom_info)
+        atom_name = atom_info[0][0] + atom_info[1]  # grab element and number to make atom name
+        chiral_centers[atom_name] = v
+
     print("Chiral Centers: ", chiral_centers)
+    return chiral_centers
 
 
 if __name__ == "__main__":
 
     # DEBUG ONLY
     fname = "../test/data/pdb/alanine.pdb"
-    mol_name = "alanine"
+    #fname = "../test/data/pdb/esketamine.pdb"
+    mol_name = "esketamine"
     with open(fname, 'r') as pdb_file:
         pdb_str = pdb_file.read()
 
