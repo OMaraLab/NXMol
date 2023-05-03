@@ -167,6 +167,14 @@ class _2DChemicalObj:
         self._graph.add_node(atom.name)
         self._graph._node[atom.name] = atom
 
+    def replace_atom(self, atom: Atom2D, atom_id: str):
+        """
+        :param atom:
+        :param atom_id:
+        :return:
+        """
+        self._graph._node[atom_id] = atom
+
     def rename_atom(self, atom: Atom2D, name):
         nx.relabel_nodes(self._graph,
                          {atom.name: name},
@@ -215,11 +223,12 @@ class _2DChemicalObj:
         for index in indices:
             self.remove_atom(index, index_type=index_type)
 
-    def get_atom(self, index: Any, index_type='name'):
+    def get_atom(self, index: Any, index_type='name') -> Atom2D:
         if index_type == 'name':
             return self._graph.nodes[index]
         else:
-            return [a for a in self._graph._node.values() if a._index[index_type] == index][0]
+            match_list = [a for a in self._graph._node.values() if a._index[index_type] == index]
+            return match_list[0] if len(match_list) > 0 else None
             # return next((d for d in self._graph._node.values() if d[index_type] == index), None)
 
     def get_atoms(self, index: List, index_type='name'):
@@ -838,8 +847,8 @@ class _2DChemicalObj:
                     heavy_ids = n_ids.difference(h_ids)
 
                     # add h_ids to marked fragment
-                    for h_id in h_ids:
-                        marked_frags[g_id].add(h_id)
+                    # for h_id in h_ids:
+                    #     marked_frags[g_id].add(h_id)
 
                     if depth == max_depth:
                         # stop BFS at max depth
@@ -865,15 +874,6 @@ class _2DChemicalObj:
 
     def get_fragment(self, index: str):
         return self._fragments.get(index)
-
-    def get_pdb_str(self):
-        """
-        Return the molecule as a pdb file.
-        :return:
-        """
-
-
-        return
 
 
 class _3DChemicalObj(_2DChemicalObj):

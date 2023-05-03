@@ -125,6 +125,20 @@ class TransitionStructureTest(unittest.TestCase):
 
         self.assertEqual(True, True)
 
+class JmolStereoTests(unittest.TestCase):
+
+    def test_stereo_assignments(self):
+
+        test_mols = ['alanine', 'esketamine']
+        test_chiral_centers = [{'C1': 'S'}, {'C3': 'S'}]
+        i = 0
+        for mol_name in test_mols:
+            fname = f"../test/data/pdb/{mol_name}.pdb"
+            with open(fname, 'r') as pdb_file:
+                pdb_str = pdb_file.read()
+            mol = pdb_to_Molecule3D(pdb_str, mol_name=mol_name, net_charge=0, assign_bond_orders_and_charges=True)
+            self.assertDictEqual(test_chiral_centers[i], getChiralCenters(mol))
+            i += 1
 
 class ParserTest(unittest.TestCase):
 
