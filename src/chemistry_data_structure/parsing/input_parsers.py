@@ -244,9 +244,14 @@ def _GAMESS_parser(GAMESS_log: str, units: str = 'Bohr', id_map=None):
     # parsing the qm esp grid (units of BOHRs)
     # the esp grid has some arbitrary comments/headings in odd places making the regex a bit complex
     # requires putting the relevent data in group one and extracting it as such
-    compile_str = r"(?<=ELECTROSTATIC POTENTIAL)[\s\S]+?= *\d*\n([\s\S]+?)(?=\n NET CHARGES:)"
-    parser = re.compile(compile_str)
-    optimised_grid = parser.findall(GAMESS_log)[-1]
+    compile_str_ESP_with_commments = r"(?<=ELECTROSTATIC POTENTIAL)([\s\S]+?)(?=\n NET CHARGES:)"
+    parser = re.compile(compile_str_ESP_with_commments)
+    grid_with_heading = parser.findall(GAMESS_log)[-1]
+    compile_str_extract_grid_start = r"\s*\d*(\s*-?\d*\.?\d+){6}\n"
+    # parser = re.compile(compile_str_extract_grid_start)
+    start_index = re.search(compile_str_extract_grid_start, grid_with_heading).start()
+    optimised_grid = grid_with_heading[start_index:]
+
     with StringIO(optimised_grid) as str_buffer:
         # this seems to be one of the fastest ways to load the esp_grid
         esp_matrix = np.loadtxt(str_buffer, dtype=np.float64)
