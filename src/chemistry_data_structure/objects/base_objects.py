@@ -440,13 +440,13 @@ class _2DChemicalObj:
                                    if self.get_atom(n_id).element == element])
         return counts
 
-    def get_element_count(self, element: str):
+    def get_element_count(self, elements: Set[str]) -> int:
         """
-        Returns the number of atoms of a certain type of element.
-        :param element: element to count
+        Returns the number of atoms of a certain set of elements.
+        :param elements: set of elements to count
         :return: int count
         """
-        return len([a for a in self.atoms if self.get_atom(a).element == element])
+        return len([a for a in self.atoms if self.get_atom(a).element in elements])
 
     def set_atom_attributes(self, attrs: dict):
         """
