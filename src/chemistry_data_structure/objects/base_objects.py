@@ -3,7 +3,7 @@ from functools import reduce
 from sys import stderr
 
 import networkx as nx
-from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet
+from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet, Set
 import numpy as np
 from matplotlib import pyplot as plt
 from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
