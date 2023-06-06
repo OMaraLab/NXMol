@@ -3,7 +3,7 @@ from functools import reduce
 from sys import stderr
 
 import networkx as nx
-from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet
+from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet, Set
 import numpy as np
 from matplotlib import pyplot as plt
 from chemistry_data_structure.helpers.chem import ELECTRONEGATIVITIES, VALENCE_ELECTRONS, FULL_VALENCES, \
@@ -137,6 +137,15 @@ class _2DChemicalObj:
     @property
     def valences(self):
         return {atom_id: self.get_atom(atom_id).valence for atom_id in self.atoms}
+
+    @property
+    def coordinates(self):
+        return {atom_id: self.get_atom(atom_id).coordinates for atom_id in self.atoms}
+
+    @property
+    def chirality(self):
+        return {atom_id: self.get_atom(atom_id).chirality for atom_id in self.atoms
+                if self.get_atom(atom_id).element == 'C'}
 
     @property
     def neighbour_counts(self):
@@ -440,7 +449,7 @@ class _2DChemicalObj:
                                    if self.get_atom(n_id).element == element])
         return counts
 
-    def get_element_count(self, elements: set[str]) -> int:
+    def get_element_count(self, elements: Set[str]) -> int:
         """
         Returns the number of atoms of a certain set of elements.
         :param elements: set of elements to count
@@ -453,7 +462,6 @@ class _2DChemicalObj:
         Update the atom node objects with the attributes as specified by the attrs dictionary.
         :param attrs: dictionary of atom keys to attributes to set, i.e. {'H1': {'formal_charge': 0, 'nbes': 10}}
         """
-        print(attrs)
         nx.set_node_attributes(self._graph, attrs)
 
         # TODO: temporary until atom update() is implemented

@@ -94,6 +94,9 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         return np.sqrt(1 / self.num_atoms * sum((A @ partialChargeVector - b) ** 2))
 
     def pdbStr(self) -> str:
+        """
+        Returns the PDB representation of this 3D Molecule object as a string.
+        """
         from chemistry_data_structure.parsing.pdb import PDB_TEMPLATE, pdb_conect_line
         io = StringIO()
 
@@ -154,8 +157,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
         from numpy import array as vector
 
-        print("Marked Heavy Atom IDS: ", marked_heavy_atom_ids)
-
         # find new neighbours
         first_neighbours = self.first_neighbours
 
@@ -170,11 +171,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             # assumes no radicals
             num_lone_pairs = self.non_bonded_electrons[heavy_atom_id]
             hybridisation = (len(neighbour_ids) + num_lone_pairs)
-
-            print("Heavy atom ID: ", heavy_atom_id)
-            print("Hybridisation: ", hybridisation)
-            print("Number of Non Bonded Electrons: ", self.non_bonded_electrons[heavy_atom_id])
-            print("Num lone pairs: ", num_lone_pairs)
 
             for atom_id in neighbour_ids:
                 if self.atoms[atom_id].element == 'H':
@@ -250,12 +246,9 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     continue
 
             else:
-                # TODO: do not handle above tetrahedral state - this may need to be fixed.
+                # TODO: do not handle above tetrahedral state - FIX THIS, USE RANDOM ASSIGNMENT METHOD
                 # print("Relying on Bertrand's random method instead... Hybridisation = {} Atom = {} Element = {}".format(hybridisation, heavy_atom_id, heavy_atom.element))
                 continue
-
-            print("New Coordinates: ", new_coordinates)
-            print("H Neighbour IDs: ", h_neighbour_ids)
 
             # Update atom coordinates
             for (n, atom_id) in enumerate(h_neighbour_ids):
@@ -272,7 +265,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     coordinates=new_coordinates[n],
                 )
 
-            print("Updated Atom: ", self.get_atom(atom_id))
 
     def mol2Str(self) -> str:
         """

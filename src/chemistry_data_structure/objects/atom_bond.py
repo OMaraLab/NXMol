@@ -51,6 +51,7 @@ class _Atom:
         self.partial_charge = None
         self.radical_electrons = 0
         self.stereo = None
+        self.chirality = None
 
         if 'full_valence' in kwargs:
             self.valence = kwargs['full_valence']
@@ -193,6 +194,12 @@ class Atom3D(_Atom):
 
     def __str__(self):
         return f"Atom3D(Name: {self.name}, Element: {self.element}, Coords: {self.coordinates})"
+
+    def set_coordinates(self, coordinates):
+        """
+        Updates the coordinates of this atom.
+        """
+        self.coordinates = coordinates
 
 
 class RDKitAtom(_Atom):
