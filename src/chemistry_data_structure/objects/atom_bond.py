@@ -39,19 +39,18 @@ class _Atom:
         self._index['name'] = name
         self._attributes = {}
 
-        # self.name = name
         self.full_valence = None
         self.valence = None
-        self.formal_charge = None
+        self.formal_charge: int = None
         self.valence_electrons = None
         self.non_bonded_electrons = None
-        self.hybridisation = None
-        self.is_aromatic = None
-        self.is_conjugated = None
+        self.hybridisation: int = None
+        self.is_aromatic: bool = None
+        self.is_conjugated: bool = None
         self.partial_charge = None
         self.radical_electrons = 0
         self.stereo = None
-        self.chirality = None
+        self.chirality: str = None
 
         if 'full_valence' in kwargs:
             self.valence = kwargs['full_valence']
@@ -76,7 +75,9 @@ class _Atom:
     def get_index(self, id_type: str = 'name'):
         """
         Method for getting the internal id by accessing the internal index dictionary
-        :param id_type:
+        :param id_type: 'name' is default lookup (i.e. C1, H2...),
+                        'pdb': pdb specific id, assigned when parsed from a pdb
+                        'nid': numerical id, assigned when parsed from a pdb
         :return:
         """
         if id_type in set(self._index.keys()):
@@ -245,17 +246,27 @@ class RDKitAtom(_Atom):
 
 class _Bond:
 
-    def __init__(self, **kwargs):
+    def __init__(self,
+                 atoms: set,
+                 **kwargs):
+
+        # assign atoms
+        assert atoms is not None, "Bond atoms cannot be none..."
+        self._atoms = atoms
+
+        # properties
+        self.order: int = None
+        self.is_aromatic: bool = None
+
+        # general attributes dictionary TODO: either use this or remove... consult with Callum
         self._attributes = {}
-        self._atoms = {}
-        self.order = None
 
         if 'order' in kwargs:
             self.order = kwargs['order']
 
     def __getitem__(self, item):
         # TODO: Might just make this class a subclass of dictionary
-        # Will prbably need to set up this for networkx to properly interface
+        # Will probably need to set up this for networkx to properly interface
         return self._attributes.__getitem__(item)
 
     def __setitem__(self, key, value):
@@ -300,14 +311,16 @@ class _Bond:
 
 class Bond2D(_Bond):
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self,
+                 atoms: set,
+                 **kwargs):
+        super().__init__(atoms, **kwargs)
 
 
 class Bond3D(_Bond):
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, atoms: set, **kwargs):
+        super().__init__(atoms, **kwargs)
 
 
 class RDKitBond(_Bond):

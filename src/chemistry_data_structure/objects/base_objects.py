@@ -82,6 +82,14 @@ class _2DChemicalObj:
     #   return the value for that property.
 
     @property
+    def graph(self):
+        return self._graph
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
     def atoms(self):
         # TODO: we should modify this to be atom_ids, just need to refactor
         return self.graph.nodes
@@ -99,24 +107,25 @@ class _2DChemicalObj:
         return self.graph.edges
 
     @property
-    def rings(self):
-        return list(map(tuple, nx.cycle_basis(self.graph)))
-
-    @property
     def bond_objects(self):
         return list(self.graph.edges.values())
 
     @property
-    def graph(self):
-        return self._graph
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
     def bond_orders(self):
         return {frozenset(bond_ids): self.get_bond(bond_ids[0], bond_ids[1]).order for bond_ids in self.bonds}
+
+    @property
+    def rings(self):
+        return list(map(tuple, nx.cycle_basis(self.graph)))
+
+    @property
+    def aromatic_atoms(self):
+        return list(atom.get_index() for atom in self.atom_objects if atom.is_aromatic)
+
+    @property
+    def aromatic_bonds(self):
+        return list(frozenset(bond_ids) for bond_ids in self.bonds
+                    if self.get_bond(bond_ids[0], bond_ids[1]).is_aromatic == True)
 
     @property
     def formal_charges(self):
@@ -733,13 +742,17 @@ class _2DChemicalObj:
                 )
                 return is_hucklel_compatible(ring_bond_orders[ring] + non_bonded_pairs)
 
-        #self.aromatic_bonds = set()
-        # set aromatic flag and bond order in bond objects
+        # set aromatic flag and bond order in atom and bond objects
         for ring in rings:
             if is_aromatic_ring(ring):
-                for a1, a2 in ring_bonds[ring]:
-                    self.get_bond(a1, a2).order = AROMATIC_BOND_ORDER
-                    # TODO: CHECK THIS!!!
+
+                # update atom properties for aromaticity
+                atom_prop_dict = {a: {'is_aromatic': True} for a in ring}
+                self.set_atom_attributes(atom_prop_dict)
+
+                # update bond properties for aromaticity
+                bond_prop_dict = {(a1, a2): {'order': AROMATIC_BOND_ORDER, 'is_aromatic': True} for a1, a2 in ring_bonds[ring]}
+                self.set_bond_attributes(bond_prop_dict)
 
     def assign_hybridisations_and_valences(self):
         """
@@ -757,7 +770,7 @@ class _2DChemicalObj:
             # assign valences
             atom.valence = neighbour_counts[atom.get_index()]
 
-            # assign hybirdisations
+            # assign hybridisations
             if max(FULL_VALENCES[atom.element.upper()]) > 1:
                 atom.hybridisation = neighbour_counts[atom.get_index()] + self.non_bonded_electrons[atom.get_index()] // 2 - 1
             else:
@@ -810,7 +823,9 @@ class _2DChemicalObj:
         # print("Norm Hybridisation Scores: ", hybridisation_scores)
         # print("Conjugated atoms: ", self.conjugated_atoms)
 
-    def get_fragments_around_elements(self, elements: set, max_depth: int, restrict_arom: bool = False) -> graph:
+    def get_fragments_around_elements(self, elements: set,
+                                      max_depth: int,
+                                      restrict_arom: bool = False) -> graph:
         """
         Use a Breadth-First Traversal of the molecular graph around groups of interest
         and return the molecular fragments covered by the traversal. Useful for analysis

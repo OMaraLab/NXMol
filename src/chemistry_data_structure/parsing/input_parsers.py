@@ -76,7 +76,7 @@ def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
         for a in atoms:
             a1_name = [a.name for (a, _) in atoms if a.get_index('mol2') == mol2_id1][0]
             a2_name = [a.name for (a, _) in atoms if a.get_index('mol2') == mol2_id2][0]
-            bond_objects.append((a1_name, a2_name, Bond3D()))
+            bond_objects.append((a1_name, a2_name, Bond3D(set((a1_name, a2_name)))))
 
     total_net_charge = sum(partial_charge for (atom, partial_charge) in atoms)
     assert abs(total_net_charge - round(total_net_charge)) <= 0.01, total_net_charge
@@ -155,9 +155,8 @@ def pdb_to_Molecule3D(pdb_str: str,
     bonds = []
     for pdb_bond in pdb_bonds:
         a1_ind, a2_ind = list(pdb_bond)
-        bonds.append((pdb_atom_index_name_map[a1_ind], pdb_atom_index_name_map[a2_ind], Bond3D()))
-
-    # print("Bonds: ", bonds)
+        a1_name, a2_name = pdb_atom_index_name_map[a1_ind], pdb_atom_index_name_map[a2_ind]
+        bonds.append((a1_name, a2_name, Bond3D(set((a1_name, a2_name)))))
 
     molecule = Molecule3D(
         atoms,
@@ -169,7 +168,7 @@ def pdb_to_Molecule3D(pdb_str: str,
     if assign_bond_orders_and_charges and net_charge is not None:
         molecule.assign_bond_orders_and_charges_with_ILP(net_charge=net_charge)
 
-        # if assign aromatic bonds, hybridisations, conjugations
+        # assign aromatic bonds, hybridisations, conjugations
         molecule.assign_aromatic_bonds()
         molecule.assign_hybridisations_and_valences()
         molecule.assign_conjugated_atoms()
@@ -304,7 +303,7 @@ def _GAMESS_parser(GAMESS_log: str, units: str = 'Bohr', id_map=None):
             bonds.append((
                 atom1_name,
                 atom2_name,
-                Bond3D(order=float(bond_order))
+                Bond3D(set((atom1_name, atom2_name)), order=float(bond_order))
             )
             )
     return atoms, bonds, esp_grid_charges, esp_grid_coords

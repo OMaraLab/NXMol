@@ -17,6 +17,7 @@ from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, B
 from chemistry_data_structure.helpers.vector_calculations import place_first_hydrogen, \
     gromos_tetrahedral_1H, gromos_trigonal_planar_1H, gromos_trigonal_planar_2H, gromos_tetrahedral_from_2_vectors, \
     gromos_tetrahedral_3H
+from chemistry_data_structure.parsing.sybyl import sybyl_atom_type
 from typing import List, Union
 
 
@@ -149,6 +150,57 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
         return io.getvalue()
 
+    def mol2Str(self, use_ar_bonds: bool = True) -> str:
+        """
+        Outputs molecule as mol2 string.
+        """
+        io = StringIO()
+
+        def print_to_io(*args):
+            print(*args, file=io)
+
+        # write header
+        print_to_io('@<TRIPOS>MOLECULE')
+        print_to_io(self.name)
+        print_to_io(
+            '{num_atoms} {num_bonds}'.format(
+                num_atoms=len(self.atoms),
+                num_bonds=len(self.bonds)
+            ),
+        )
+        print_to_io('SMALL')
+        print_to_io('USER_CHARGES')
+
+        # write atoms
+        print_to_io('@<TRIPOS>ATOM')
+        for atom in self.atom_objects:
+            # TODO: maybe sort by id?
+
+            print_to_io(
+                '{index} {name} {coordinates} {sybyl_atom_type} {subst_id} {subst_name} {charge}'.format(
+                    index=atom.get_index('nid'),
+                    name='A' + str(get_index('nid')),
+                    coordinates=' '.join(map(lambda x: '{0:.3f}'.format(float(x)), atom.coordinates)),
+                    sybyl_atom_type=sybyl_atom_type(atom.element, atom.valence),
+                    subst_id=1,
+                    subst_name='<1>',
+                    charge=float(self.formal_charges[atom.index]),
+                ),
+            )
+
+        # write bonds
+        print_to_io('@<TRIPOS>BOND')
+        for (bond_id, bond) in enumerate(self.bonds):
+            print_to_io(
+                '{0} {1} {2} {3}'.format(
+                    bond_id,
+                    *list(bond),
+                    'ar' if use_ar_bonds and (bond in self.aromatic_bonds) else self.bond_orders[bond],
+                ),
+            )
+
+        return io.getvalue()
+
     def calculateNewHydrogenCoordinates(self, marked_heavy_atom_ids: list):
         """
         Places new hydrogens into simple idealised geometries to later be optimised
@@ -266,25 +318,12 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                 )
 
 
-    def mol2Str(self) -> str:
-        """
-        Outputs molecule as mol2 file.
-        :return:
-        TODO: Finish this!!!
-        """
-
-        Mol2Template = '''
-        @<TRIPOS>MOLECULE
-        *****
-         {num_atoms} {num_bonds} 0 0 0
-        SMALL
-        GASTEIGER'''
-
-        return Mol2Template
-
     def OBMol(self):
         """
         Returns an openbabel OBMol object from the current 3D NXMol object (Molecule3D).
+
+        # TODO: WARNING! not fully implemented...
+
         :return: OBMol object.
         """
 
@@ -336,6 +375,9 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         return ob_mol
 
 class RDKitMolecule(_3DChemicalObj):
+    """
+    TODO: WARNING! NOT IMPLEMENTED.
+    """
 
     def __init__(self,
                  atoms: List[RDKitAtom] = None,
