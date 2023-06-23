@@ -1,6 +1,6 @@
 from typing import Optional
 
-def sybyl_atom_type(atom_valence: int, atom_element: Optional[str]) -> str:
+def sybyl_atom_type(atom_element: str, atom_valence: int) -> str:
     '''
     Source: http://www.sdsc.edu/CCMS/Packages/cambridge/pluto/atom_types.html
 
@@ -43,7 +43,6 @@ def sybyl_atom_type(atom_valence: int, atom_element: Optional[str]) -> str:
         else: # 1.8
             valence_suffix = atom_valence
 
-        # TODO: this was modified from old version, check it works!
         if isinstance(valence_suffix, int):
             assert valence_suffix > 0, (atom_valence, valence_suffix)
 

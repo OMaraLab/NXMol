@@ -174,32 +174,52 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         # write atoms
         print_to_io('@<TRIPOS>ATOM')
         for atom in self.atom_objects:
-            # TODO: maybe sort by id?
-
             print_to_io(
                 '{index} {name} {coordinates} {sybyl_atom_type} {subst_id} {subst_name} {charge}'.format(
                     index=atom.get_index('nid'),
-                    name='A' + str(get_index('nid')),
+                    name=atom.get_index('name'),
                     coordinates=' '.join(map(lambda x: '{0:.3f}'.format(float(x)), atom.coordinates)),
                     sybyl_atom_type=sybyl_atom_type(atom.element, atom.valence),
                     subst_id=1,
                     subst_name='<1>',
-                    charge=float(self.formal_charges[atom.index]),
+                    charge=self.formal_charges[atom.get_index()],
                 ),
             )
 
         # write bonds
         print_to_io('@<TRIPOS>BOND')
-        for (bond_id, bond) in enumerate(self.bonds):
+        for (bond_id, bond) in enumerate(self.bonds, start=1):
             print_to_io(
                 '{0} {1} {2} {3}'.format(
                     bond_id,
-                    *list(bond),
-                    'ar' if use_ar_bonds and (bond in self.aromatic_bonds) else self.bond_orders[bond],
+                    self.get_atom(bond[0]).get_index('nid'),
+                    self.get_atom(bond[1]).get_index('nid'),
+                    'ar' if use_ar_bonds and (bond in self.aromatic_bonds) else self.bond_orders[frozenset(bond)],
                 ),
             )
 
         return io.getvalue()
+
+    def saveMolToFile(self, fpath: str, format: str):
+        """
+        Writes the molecule as an output file in the specified format.
+        TODO: make this override the _2DChemicalObj method (for saving in graph formats for e.g.)
+
+        :param fpath: the file path to save the mol object to
+        :param format: the output format one of ['pdb', 'mol2']
+        """
+
+        # get output string in right format
+        if format == 'pdb':
+            out_str = self.pdbStr()
+        elif format == 'mol2':
+            out_str = self.mol2Str()
+        else:
+            raise AssertionError("format must be one of: 'pdb' or 'mol2'")
+
+        # write to out file
+        with open(fpath, 'w') as out_file:
+            out_file.write(out_str)
 
     def calculateNewHydrogenCoordinates(self, marked_heavy_atom_ids: list):
         """

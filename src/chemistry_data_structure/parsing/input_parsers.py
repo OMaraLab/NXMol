@@ -123,8 +123,7 @@ def pdb_to_Molecule3D(pdb_str: str,
 
     # convert to chem_ds atoms
     atoms = []
-    n_id = 0
-    for pdb_atom in pdb_atoms:
+    for n_id, pdb_atom in enumerate(pdb_atoms, start=1):
         atoms.append(
             Atom3D(
                 index={'pdb': int(pdb_atom.index), 'nid': n_id},
@@ -135,7 +134,6 @@ def pdb_to_Molecule3D(pdb_str: str,
                 valence_electrons=VALENCE_ELECTRONS[pdb_atom.element.upper()],
             )
         )
-        n_id += 1
 
     # get pdb bonds
     pdb_bonds = reduce(
@@ -147,8 +145,6 @@ def pdb_to_Molecule3D(pdb_str: str,
         ],
         set(),
     )
-
-    # print("PDB Bonds: ", pdb_bonds)
 
     # convert pdb_bonds to chem_ds bonds
     pdb_atom_index_name_map = {pdb_atom.index: pdb_atom.name.replace("_", "") for pdb_atom in pdb_atoms}
@@ -164,11 +160,13 @@ def pdb_to_Molecule3D(pdb_str: str,
         name=mol_name
     )
 
-    # assign bond orders and charges with ILP
+
     if assign_bond_orders_and_charges and net_charge is not None:
+
+        # assign bond orders and charges with ILP
         molecule.assign_bond_orders_and_charges_with_ILP(net_charge=net_charge)
 
-        # assign aromatic bonds, hybridisations, conjugations
+        # assign aromatic bonds, hybridisations, actual valences and conjugations
         molecule.assign_aromatic_bonds()
         molecule.assign_hybridisations_and_valences()
         molecule.assign_conjugated_atoms()

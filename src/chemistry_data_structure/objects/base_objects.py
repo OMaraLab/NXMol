@@ -504,6 +504,10 @@ class _2DChemicalObj:
     ) -> None:
         """
 
+        Assigns bond orders and charges using a consistent resonance form for a molecule.
+
+        TODO: possibly rewrite this, it is extremely bloated and possibly overcomplicated.
+
         :param net_charge:
         :param total_electrons:
         :param enforce_octet_rule:
@@ -682,6 +686,7 @@ class _2DChemicalObj:
         write_to_debug(debug, 'bond_orders:', self.bond_orders)
         write_to_debug(debug, 'formal_charges', self.formal_charges)
         write_to_debug(debug, 'non_bonded_electrons', self.non_bonded_electrons)
+
 
     def assign_aromatic_bonds(self):
         """
