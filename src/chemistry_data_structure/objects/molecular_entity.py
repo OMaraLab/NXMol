@@ -110,8 +110,8 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             ),
         )
 
-        for (atom_index, pdb_id) in sorted(pdb_ids.items(), key=itemgetter(1)):
-            atom = self.atoms[atom_index]
+        for (atom_name, pdb_id) in sorted(pdb_ids.items(), key=itemgetter(1)):
+            atom = self.atoms[atom_name]
             coordinates = atom.coordinates
 
             if coordinates is None:
@@ -125,7 +125,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                 print(PDB_TEMPLATE.format(
                     'HETATM',
                     pdb_id,
-                    (atom.element.title() + str(atom_index))[:4],
+                    str(atom_name),
                     'R',
                     '',
                     pdb_id,
@@ -138,12 +138,12 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             except:
                 raise Exception(pdb_id, atom.element, coordinates)
 
-        for (atom_index, pdb_id) in sorted(pdb_ids.items(), key=itemgetter(1)):
+        for (atom_name, pdb_id) in sorted(pdb_ids.items(), key=itemgetter(1)):
             print(
                 pdb_conect_line(
                     [pdb_id]
                     +
-                    [pdb_ids[list(frozenset(bond) - frozenset([atom_index]))[0]] for bond in self.bonds if atom_index in bond]
+                    [pdb_ids[list(frozenset(bond) - frozenset([atom_name]))[0]] for bond in self.bonds if atom_name in bond]
                 ),
                 file=io,
             )
@@ -216,6 +216,8 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             out_str = self.mol2Str()
         else:
             raise AssertionError("format must be one of: 'pdb' or 'mol2'")
+
+        print(f'Writing {fpath}...')
 
         # write to out file
         with open(fpath, 'w') as out_file:
