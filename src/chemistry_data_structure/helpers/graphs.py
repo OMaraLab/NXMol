@@ -29,7 +29,7 @@ def lewis_graph(molecule: _2DChemicalObj, use_non_bonded_electrons: bool = True)
 
 
 def are_atoms_equivalent(node_1: _Atom, node_2: _Atom) -> bool:
-    return node_1['element'] == node_2['element'] and node_1['non_bonded_electrons'] == node_2['non_bonded_electrons']
+    return node_1['element'] == node_2['element'] #and node_1['non_bonded_electrons'] == node_2['non_bonded_electrons']
 
 
 def are_edges_equivalent(edge_1: _Bond, edge_2: _Bond) -> bool:
@@ -44,7 +44,7 @@ def are_graphs_isomorphic(
     return is_isomorphic(
         *graphs,
         node_match=node_match,
-        edge_match=edge_match,
+        #edge_match=edge_match,
     )
 
 
