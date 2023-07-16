@@ -857,7 +857,6 @@ class _2DChemicalObj:
                 search_queue.put((g_id, 0))  # queue item is: (a_id, depth)
                 marked_frags[g_id] = set()
                 while not search_queue.empty():
-                    print(search_queue.queue)
 
                     # pop queue
                     a_id, depth = search_queue.get()
