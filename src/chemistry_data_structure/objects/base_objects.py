@@ -95,6 +95,10 @@ class _2DChemicalObj:
         return self.graph.nodes
 
     @property
+    def heavy_atoms(self):
+        return list(atom.get_index() for atom in self.atom_objects if atom.element != 'H')
+
+    @property
     def atom_objects(self):
         return list(self.graph.nodes.values())
 
