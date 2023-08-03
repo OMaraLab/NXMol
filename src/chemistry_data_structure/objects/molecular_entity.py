@@ -260,10 +260,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
             num_h_to_place = len(h_neighbour_ids)
 
-            print("Heavy Atom ID: ", heavy_atom_id)
-            print("H Neighbour IDs: ", h_neighbour_ids)
-            print('Num H to Place: ', num_h_to_place)
-
             # skip if nothing to be done
             if num_h_to_place == 0:
                 continue
@@ -279,12 +275,10 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             # Determine coordinates based on hybridisation
             if hybridisation == LINEAR:
                 # work out vector from direct H neighbour to its only other neighbour
-                print("LINEAR")
                 new_vector = points[0] - points[1]
                 new_coordinates.append(tuple((points[0] + new_vector).tolist()))
 
             elif hybridisation == TRIGONAL_PLANAR:
-                print("TRIGONAL PLANAR")
                 if num_h_to_place == 1:
 
                     if num_lone_pairs == 1:
@@ -295,7 +289,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     new_coordinates.extend(gromos_trigonal_planar_2H(points))
 
             elif hybridisation == TETRAHEDRAL:
-                print("TETRAHEDRAL")
                 # Case 1: only 1 hydrogen to add
                 if num_h_to_place == 1:
 
@@ -325,7 +318,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                 # Case 4: methyl... ignore
                 if num_h_to_place == 4:
                     # TODO: even if this is an edge case, make it return coords
-                    print("METHYL")
                     continue
 
             else:
@@ -335,8 +327,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                 new_coordinates.extend((1.3 * heavy_atom_pdb_index,
                                         0.1 * (-1 if heavy_atom_pdb_index % 2 == 0 else +1),
                                         0.1 * (heavy_atom_pdb_index % 5)))
-
-            print("New Coordinates: ", new_coordinates)
 
             # Update atom coordinates
             # TODO: we are only updating the coordinates of marked H atoms, but need
@@ -355,10 +345,6 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     is_aromatic=0,
                     coordinates=new_coordinates[n],
                 )
-
-        for atom in self.atoms.values():
-            print(atom)
-
 
     def OBMol(self):
         """
