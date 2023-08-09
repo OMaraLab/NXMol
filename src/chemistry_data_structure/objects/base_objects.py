@@ -24,19 +24,23 @@ ELEMENT_COLOURS = {'H': '#eeeeee',
                    'BR': 'pink',
                    'SI': 'yellow'}
 
+
 class _2DChemicalObj:
     """
     Class representing a molecular entity, i.e. with a unique structural connectivity
     represented as a graph and stereo-isomeric form. This object contains a networkx graph to represent
     it. This can be parsed to numerous common string formats.
     """
+
     def __init__(self,
                  atoms: List[_Atom] = None,
                  bonds: List[Union[str, str, _Bond]] = None,
-                 name: str = ''
+                 name: str = '',
+                 net_charge: Optional[int] = None
                  ):
 
         # iterate for all init methods
+        self._net_charge = net_charge
 
         # init graph
         self._name = name
@@ -64,11 +68,14 @@ class _2DChemicalObj:
         #   i.e. a data structure for storing all class properties that can be iterated through easily
         #   i'm thinking we can use this when adding/removing atoms and bonds to update other properties
         #   if we store them explicitly
+        #   @Joseph Maybe using either the default dataclass object or one of the packages might work here?
         self._properties = {'fragments': self._fragments}
 
+    def __repr__(self):
+        # The Multifit ESP pipeline often creates copies of objects, and it's useful to know if you're dealing
+        # with copies or references
+        return f'{self._name if self._name else type(self).__name__} at {hex(id(self))}'
 
-    # def __repr__(self):
-    #     return f'{type(self).__name__}: {self.chemical_formula}'
     #
     # @property
     # def chemical_formula(self):
@@ -167,6 +174,15 @@ class _2DChemicalObj:
     @property
     def first_neighbours(self):
         return {atom_id: [x for x in self.graph.neighbors(atom_id)] for atom_id in self.atoms}
+
+    @property
+    def net_charge(self):
+        return self._net_charge
+
+    @net_charge.setter
+    def net_charge(self, value):
+        assert isinstance(value, int)
+        self._net_charge = value
 
     # @graph.setter
     # def graph(self, value):
@@ -691,7 +707,6 @@ class _2DChemicalObj:
         write_to_debug(debug, 'formal_charges', self.formal_charges)
         write_to_debug(debug, 'non_bonded_electrons', self.non_bonded_electrons)
 
-
     def assign_aromatic_bonds(self):
         """
         Assigns aromatic bonds using huckel rules.
@@ -754,7 +769,6 @@ class _2DChemicalObj:
         # set aromatic flag and bond order in atom and bond objects
         for ring in rings:
             if is_aromatic_ring(ring):
-
                 # update atom properties for aromaticity
                 atom_prop_dict = {a: {'is_aromatic': True} for a in ring}
                 self.set_atom_attributes(atom_prop_dict)
@@ -908,8 +922,8 @@ class _2DChemicalObj:
 
 
 class _3DChemicalObj(_2DChemicalObj):
-    def __init__(self, atoms, bonds, name: str = ''):
-        super().__init__(atoms, bonds, name)
+    def __init__(self, atoms, bonds, name: str = '', net_charge=None):
+        super().__init__(atoms, bonds, name, net_charge)
 
     # def add_atom(self, atom: Atom3D):
     #     if not isinstance(atom, Atom3D): # not sure if we actually want to add atoms this way

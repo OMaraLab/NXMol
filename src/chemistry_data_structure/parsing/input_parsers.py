@@ -304,7 +304,16 @@ def _GAMESS_parser(GAMESS_log: str, units: str = 'Bohr', id_map=None):
                 Bond3D(set((atom1_name, atom2_name)), order=float(bond_order))
             )
             )
-    return atoms, bonds, esp_grid_charges, esp_grid_coords
+
+    # extracting net charge
+    compile_str_net_charge = "(?<=CHARGE OF MOLECULE\s{27}=)\s*-?\d*"
+    parser_net_charge = re.compile(compile_str_net_charge)
+    net_charge_result = parser_net_charge.findall(GAMESS_log)
+    if not net_charge_result:
+        raise BlockException("Net charge line not found")
+    net_charge = int(net_charge_result[0])
+
+    return atoms, bonds, esp_grid_charges, esp_grid_coords, net_charge
 
 
 def GAMESS_to_Molecule3D(
@@ -324,12 +333,13 @@ def GAMESS_to_Molecule3D(
     # this parser takes ~0.2 seconds might add option to not parse the qm logs
     # mmap may be a solution but there is debate
 
-    atoms, bonds, esp_grid_charges, esp_grid_coords = _GAMESS_parser(GAMESS_log, units)
+    atoms, bonds, esp_grid_charges, esp_grid_coords, net_charge = _GAMESS_parser(GAMESS_log, units)
 
     return Molecule3D(atoms=list(atoms.values()),
                       bonds=bonds,
                       esp_grid_coords=esp_grid_coords,
-                      esp_grid_charge=esp_grid_charges
+                      esp_grid_charge=esp_grid_charges,
+                      net_charge=net_charge
                       )
 
 
@@ -345,13 +355,14 @@ def GAMESS_pdb_to_Molecule3D(
     """
 
     id_map = pdb_index_parser(pdb_str)
-    atoms, bonds, esp_grid_charges, esp_grid_coords = _GAMESS_parser(GAMESS_log=GAMESS_str,
+    atoms, bonds, esp_grid_charges, esp_grid_coords, net_charge = _GAMESS_parser(GAMESS_log=GAMESS_str,
                                                                      id_map=id_map)
 
     return Molecule3D(atoms=list(atoms.values()),
                       bonds=bonds,
                       esp_grid_coords=esp_grid_coords,
-                      esp_grid_charge=esp_grid_charges
+                      esp_grid_charge=esp_grid_charges,
+                      net_charge=net_charge
                       )
 
 
