@@ -405,7 +405,6 @@ class RDKitMolecule(_3DChemicalObj):
     """
     TODO: WARNING! NOT IMPLEMENTED.
     """
-    raise NotImplementedError
     def __init__(self,
                  atoms: List[RDKitAtom] = None,
                  bonds: List[RDKitBond] = None,
