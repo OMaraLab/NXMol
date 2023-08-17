@@ -49,8 +49,10 @@ class _Atom:
         self.is_conjugated: bool = None
         self.partial_charge = None
         self.radical_electrons = 0
-        self.stereo = None
         self.chirality: str = None
+
+        # TODO: for deletion probably
+        self.stereo = None
 
         if 'full_valence' in kwargs:
             self.valence = kwargs['full_valence']
@@ -184,7 +186,12 @@ class Atom2D(_Atom):
         super().__init__(name, element, **kwargs)
 
     def __str__(self):
-        return f"Atom3D(Name: {self.name}, Element: {self.element})"
+
+        return f"Atom2D(Name: {self.name}, Element: {self.element}, Full Valence: {self.full_valence}, " \
+               f"Valence: {self.valence}, Formal Charge: {self.formal_charge}, Valence Electrons: {self.valence_electrons}, " \
+               f"Non Bonded Electrons: {self.non_bonded_electrons}, Hybridisation: {self.hybridisation}, " \
+               f"Is Aromatic: {self.is_aromatic}, Is Conjugated: {self.is_conjugated}, Radical Electrons: {self.radical_electrons}, " \
+               f"Chirality: {self.chirality})"
 
 
 class Atom3D(_Atom):
@@ -194,7 +201,12 @@ class Atom3D(_Atom):
         self.coordinates: tuple = coordinates
 
     def __str__(self):
-        return f"Atom3D(Name: {self.name}, Element: {self.element}, Coords: {self.coordinates})"
+        return f"Atom3D(Name: {self.name}, Element: {self.element}, Coordinates: {self.coordinates}, " \
+               f"Full Valence: {self.full_valence}," \
+               f"Valence: {self.valence}, Formal Charge: {self.formal_charge}, Valence Electrons: {self.valence_electrons}," \
+               f"Non Bonded Electrons: {self.non_bonded_electrons}, Hybridisation: {self.hybridisation}," \
+               f"Is Aromatic: {self.is_aromatic}, Is Conjugated: {self.is_conjugated}, Radical Electrons: {self.radical_electrons}," \
+               f"Chirality: {self.chirality})"
 
     def set_coordinates(self, coordinates):
         """

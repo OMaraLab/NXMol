@@ -4,6 +4,9 @@ import networkx as nx
 import pickle as pk
 # import sys
 # sys.path.append('../src/chemistry_data_structure/')
+from chemistry_data_structure.helpers.vector_calculations import place_h_using_ilp
+from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
+from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D, GAMESS_to_Molecule3D
 from chemistry_data_structure.tools import gen_tautomer_trans_structure_2D, get_start_and_end_structures
 
@@ -193,6 +196,24 @@ class ChemObjectTests(unittest.TestCase):
         print("Aromatic Bonds: ", mol.aromatic_bonds)
 
         self.assertEqual(set(mol.aromatic_atoms), {'C8', 'N3', 'C7', 'C6', 'C5', 'C4'})
+
+    def test_ilp_h_placement(self):
+
+        # create a dummy methyl molecule and keep adding hydrogens to it
+        mol = Molecule3D()
+        mol.add_atom(Atom3D('P1', 'P', (1.0, 1.0, 1.0)))
+
+        # with iterations of adding hydrogens, output the pdbStr of the molecule
+        for i in range(5):
+
+            h_name = f'H{i}'
+            points = []
+            coords = place_h_using_ilp(points)
+            mol.add_atom(Atom3D(h_name, 'H', coords))
+            mol.add_bond('P1', h_name, Bond3D({'P1', h_name}))
+
+            # output pdb
+            # TODO: HEREEEEE WE AREEEE~!!!!!
 
 # TODO: there is no field_fitting module now? Callum ples fix or remove...
 # class FieldFitTests(unittest.TestCase):

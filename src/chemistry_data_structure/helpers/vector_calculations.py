@@ -4,8 +4,11 @@ Source: Biomolecular Simulation: The GROMOS96 Manual and User Guide chII, p67-72
 """
 
 from math import sqrt, cos, sin, pi, acos
+import numpy
 from numpy import array as vector, cross, dot
 from numpy.linalg import norm
+from pulp import LpProblem, LpMinimize, LpMaximize, LpVariable, LpStatus, LpContinuous
+from pulp import PULP_CBC_CMD, PulpSolverError
 
 C_H_BOND_LENGTH = 1.0
 TETRAHEDRAL_BOND_ANGLE = 109.5 * (pi / 180)
@@ -16,7 +19,7 @@ TRIGONAL_PLANAR_BOND_ANGLE = 120 * (pi / 180)
 
     Returns new coordinates for a hydrogen atom.
 """
-def place_first_hydrogen(points: list, theta: float):
+def place_first_hydrogen(points: list, theta: float) -> numpy.ndarray:
 
     # define base vector (e.g. C-C bond)
     base_vector = points[0] - points[1]
@@ -164,8 +167,74 @@ def gromos_tetrahedral_3H(points: list) -> list:
     return new_coordinates
 
 
-def reflect_atomic_vectors_about_chiral_center():
+def place_h_using_ilp(points: List[numpy.ndarray]):
+    """
+    Uses an ILP solver to places one new hydrogen atom in the position that maximises
+    the dot product between it's coordinates and all existing vector coordinates. This is a more
+    general placement strategy useful for centers with hybridisations above a tetrahedral geometry
+    (where the number of cases to consider increases drastically).
 
+    Use this repeatedly to add hydrogens one at a time for atomic centers that are above tetrahedral.
 
+    :param points: all points involved in the placement of the new hydrogen, including the central atom.
+    :return:
 
-    return
+    """
+
+    # transform points to vector
+    print('Points: ', points)
+    if len(points) == 1:
+        return (1.0, 1.0, 1.0)
+
+    problem = LpProblem("Hydrogen vector placement problem", LpMaximize)
+    center_point, vector_points = points[0], points[1:]
+    unit_vectors = [(v - center_point) / norm(v - center_point) for v in vector_points]
+
+    print("Unit Vectors: ", unit_vectors)
+
+    # ===== SETS =====
+    V = range(len(unit_vectors))      # existing vectors to consider in the placement
+
+    # ===== DATA =====
+    PX = [float(unit_vectors[i][0]) for i in V]      # x coords of existing vectors
+    PY = [float(unit_vectors[i][1]) for i in V]      # y coords of existing vectors
+    PZ = [float(unit_vectors[i][2]) for i in V]      # z coords of existing vectors
+
+    print('PX: ', PX)
+    print('PY: ', PY)
+    print('PZ: ', PZ)
+
+    # ===== VARIABLES =====
+    d = [LpVariable(f"d_{i}") for i in V]                                   # distance variable
+    x = LpVariable("x", lowBound=-1.0, upBound=1.0, cat=LpContinuous)       # coordinate variables for new vector
+    y = LpVariable("y", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
+    z = LpVariable("z", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
+
+    # ===== OBJECTIVE =====
+
+    # solve a min max problem, maximize the minimum of the distance between the new vector and each other vector
+    # TODO: minimize the maximum???
+    problem += sum(d[i] for i in V)
+
+    # ===== CONSTRAINTS =====
+
+    # 1) bound each distance variable by the dot product between the new vector and the other vector
+    for i in V:
+        problem += d[i] <= x * PX[i] + y * PY[i] + z * PZ[i]
+
+    # ===== SOLVING =====
+    problem.solve()
+
+    # get solution unit vector
+    if problem.status == 1:
+        for i, var in enumerate(problem.variables()):
+            print(f'{var.name}: {var.value()}')
+        new_h_vector = numpy.array([x.value(), y.value(), z.value()])
+    else:
+        print("Solving failed...")
+        raise PulpSolverError
+
+    # transform the resulting unit vector into relative coordinates with the hydrogen carbon bond length
+    new_coordinates = tuple(center_point + new_h_vector * C_H_BOND_LENGTH)
+
+    return new_coordinates

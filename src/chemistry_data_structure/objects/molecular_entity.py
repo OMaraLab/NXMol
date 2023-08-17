@@ -16,7 +16,7 @@ from chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChe
 from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, RDKitAtom, RDKitBond
 from chemistry_data_structure.helpers.vector_calculations import place_first_hydrogen, \
     gromos_tetrahedral_1H, gromos_trigonal_planar_1H, gromos_trigonal_planar_2H, gromos_tetrahedral_from_2_vectors, \
-    gromos_tetrahedral_3H
+    gromos_tetrahedral_3H, place_h_using_ilp
 from chemistry_data_structure.parsing.sybyl import sybyl_atom_type
 from typing import List, Union
 
@@ -234,11 +234,11 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         # find new neighbours
         first_neighbours = self.first_neighbours
 
-        # TODO: modifying this to assign coordinates for all atoms
+        # assign coordinates for all attached H atoms
         for heavy_atom_id in self.heavy_atoms:
 
-            # define neighbours of each heavy atom stereocenter
-            neighbour_ids = list(first_neighbours[heavy_atom_id])
+            # define neighbours of each heavy atom center
+            neighbour_ids = first_neighbours[heavy_atom_id]
             h_neighbour_ids = []
             fixed_neighbour_ids = []
             heavy_atom = self.atoms[heavy_atom_id]
@@ -247,16 +247,13 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             num_lone_pairs = self.non_bonded_electrons[heavy_atom_id]
             hybridisation = (len(neighbour_ids) + num_lone_pairs)
 
-            for atom_id in neighbour_ids:
-                if self.atoms[atom_id].element == 'H':
-                    h_neighbour_ids.append(atom_id)
-                else:
-                    fixed_neighbour_ids.append(atom_id)
+            # TODO: make sure hybridisations are assigned in the original molecule
 
-            fixed_neighbour_atoms = [
-                atom for atom in self.atoms.values()
-                if atom.get_index() in fixed_neighbour_ids
-            ]
+            h_neighbour_ids = [atom_id for atom_id in neighbour_ids
+                               if self.atoms[atom_id].element == 'H']
+
+            fixed_neighbour_atoms = [self.get_atom(atom_id) for atom_id in neighbour_ids
+                                     if self.get_atom(atom_id).element != 'H']
 
             num_h_to_place = len(h_neighbour_ids)
 
@@ -289,12 +286,14 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     new_coordinates.extend(gromos_trigonal_planar_2H(points))
 
             elif hybridisation == TETRAHEDRAL:
+
                 # Case 1: only 1 hydrogen to add
                 if num_h_to_place == 1:
 
                     # consider lone pairs for bond geometry
                     if num_lone_pairs == 2:
-                        new_coordinates.append(place_first_hydrogen(points, TETRAHEDRAL_BOND_ANGLE))
+                        new_point = place_first_hydrogen(points, TETRAHEDRAL_BOND_ANGLE)
+                        new_coordinates.append(tuple(new_point.tolist()))
                     elif num_lone_pairs == 1:
                         new_coordinates.extend(gromos_tetrahedral_from_2_vectors(points, 1))
                     else:
@@ -321,15 +320,23 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     continue
 
             else:
-                # use random assignment
-                # print("Relying on Bertrand's random method instead... Hybridisation = {} Atom = {} Element = {}".format(hybridisation, heavy_atom_id, heavy_atom.element))
-                heavy_atom_pdb_index = atom.get_index('pdb')
-                new_coordinates.extend((1.3 * heavy_atom_pdb_index,
-                                        0.1 * (-1 if heavy_atom_pdb_index % 2 == 0 else +1),
-                                        0.1 * (heavy_atom_pdb_index % 5)))
+                print('Using ILP Method...')
+                # TODO: FIX THIS
+                coordinates = place_h_using_ilp(points)
+                print(coordinates)
+                new_coordinates.append(coordinates)
+
+                # heavy_atom_pdb_index = atom.get_index('pdb')
+                # new_coordinates.append((1.3 * heavy_atom_pdb_index,
+                #                         0.1 * (-1 if heavy_atom_pdb_index % 2 == 0 else + 1),
+                #                         0.1 * (heavy_atom_pdb_index % 5)))
 
             # Update atom coordinates
             for (n, atom_id) in enumerate(h_neighbour_ids):
+
+                print("H Atom ID: ", atom_id)
+                print("New Coordinates: ", new_coordinates[n])
+
                 self._graph._node[atom_id] = Atom3D(
                     index={'name': atom_id},
                     name=atom_id,
