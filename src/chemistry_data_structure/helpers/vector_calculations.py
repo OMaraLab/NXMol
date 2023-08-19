@@ -206,15 +206,16 @@ def place_h_using_ilp(points: List[np.ndarray]):
     print('PZ: ', PZ)
 
     # ===== VARIABLES =====
-    d = [LpVariable(f"d_{i}", lowBound=-1.0, upBound=1.0, cat=LpContinuous) for i in V]         # distance variable
+    p = [LpVariable(f"p_{i}", lowBound=-1.0, upBound=1.0, cat=LpContinuous) for i in V]         # dot product variable
     x = LpVariable("x", lowBound=-1.0, upBound=1.0, cat=LpContinuous)                           # coordinate variables for new vector
     y = LpVariable("y", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
     z = LpVariable("z", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
+    d = [LpVariable(f"d_{i}", cat=LpContinuous) for i in V]         # distance variable
 
     # ===== OBJECTIVE =====
 
     # solve a min max problem, maximize the minimum of the distance between the new vector and each other vector
-    problem.setObjective(sum(d[i] for i in V))
+    problem.setObjective(sum(p[i] for i in V))
 
     # TODO: we actually want to maximize the ABSOLUTE DISTANCE VALUE... may need absolute binding variable...
 
@@ -224,9 +225,16 @@ def place_h_using_ilp(points: List[np.ndarray]):
 
     # ===== CONSTRAINTS =====
 
-    # 1) bound each distance variable by the dot product between the new vector and the other vector
+    # 1) bound the new point with a dot product between -1 and 1 between the new vector and the other vector
     for i in V:
-        problem += d[i] <= x * PX[i] + y * PY[i] + z * PZ[i]
+        problem += p[i] <= x * PX[i] + y * PY[i] + z * PZ[i]
+
+    # 2) bind the distance variable as vector distance  # TODO: this is the manhattan distance... ;(
+    for i in V:
+        problem += d[i] == x - PX[i] + y - PY[i] + z - PZ[i]
+        problem += d[i] >= 0.00001
+
+        # TODO: lets figur ehtis out yoooo
 
     # ===== SOLVING =====
     problem.solve()
