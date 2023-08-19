@@ -203,12 +203,12 @@ class _2DChemicalObj:
                          copy=False)
         atom._index['name'] = name
 
-    def add_bond(self, a1: str, a2: str, bond: Bond2D) -> None:
+    def add_bond(self, a1: str, a2: str, bond: _Bond) -> None:
         """
         :param bond:
         :return:
         """
-        if not isinstance(bond, Bond2D):
+        if not isinstance(bond, _Bond):
             raise TypeError('bond must be of type Bond')
 
         if a1 not in self._graph.nodes or a2 not in self._graph.nodes:

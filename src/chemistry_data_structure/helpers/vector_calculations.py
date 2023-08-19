@@ -3,8 +3,9 @@ Using GROMOS method for virtual hydrogen atom placement.
 Source: Biomolecular Simulation: The GROMOS96 Manual and User Guide chII, p67-72
 """
 
+from typing import List
 from math import sqrt, cos, sin, pi, acos
-import numpy
+import numpy as np
 from numpy import array as vector, cross, dot
 from numpy.linalg import norm
 from pulp import LpProblem, LpMinimize, LpMaximize, LpVariable, LpStatus, LpContinuous
@@ -19,7 +20,7 @@ TRIGONAL_PLANAR_BOND_ANGLE = 120 * (pi / 180)
 
     Returns new coordinates for a hydrogen atom.
 """
-def place_first_hydrogen(points: list, theta: float) -> numpy.ndarray:
+def place_first_hydrogen(points: list, theta: float) -> np.ndarray:
 
     # define base vector (e.g. C-C bond)
     base_vector = points[0] - points[1]
@@ -167,7 +168,7 @@ def gromos_tetrahedral_3H(points: list) -> list:
     return new_coordinates
 
 
-def place_h_using_ilp(points: List[numpy.ndarray]):
+def place_h_using_ilp(points: List[np.ndarray]):
     """
     Uses an ILP solver to places one new hydrogen atom in the position that maximises
     the dot product between it's coordinates and all existing vector coordinates. This is a more
@@ -184,7 +185,7 @@ def place_h_using_ilp(points: List[numpy.ndarray]):
     # transform points to vector
     print('Points: ', points)
     if len(points) == 1:
-        return (1.0, 1.0, 1.0)
+        return tuple(points[0] + np.array([1.0, 1.0, 1.0]))
 
     problem = LpProblem("Hydrogen vector placement problem", LpMaximize)
     center_point, vector_points = points[0], points[1:]
@@ -205,16 +206,21 @@ def place_h_using_ilp(points: List[numpy.ndarray]):
     print('PZ: ', PZ)
 
     # ===== VARIABLES =====
-    d = [LpVariable(f"d_{i}") for i in V]                                   # distance variable
-    x = LpVariable("x", lowBound=-1.0, upBound=1.0, cat=LpContinuous)       # coordinate variables for new vector
+    d = [LpVariable(f"d_{i}", lowBound=-1.0, upBound=1.0, cat=LpContinuous) for i in V]         # distance variable
+    x = LpVariable("x", lowBound=-1.0, upBound=1.0, cat=LpContinuous)                           # coordinate variables for new vector
     y = LpVariable("y", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
     z = LpVariable("z", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
 
     # ===== OBJECTIVE =====
 
     # solve a min max problem, maximize the minimum of the distance between the new vector and each other vector
-    # TODO: minimize the maximum???
-    problem += sum(d[i] for i in V)
+    problem.setObjective(sum(d[i] for i in V))
+
+    # TODO: we actually want to maximize the ABSOLUTE DISTANCE VALUE... may need absolute binding variable...
+
+    # TODO: why don't we have a d distance parameter that is literal euclidean distance between the points,
+    #   we find the point that is furthest away from all other points, and then constrain the point to exist on
+    #   the unit sphere from the central point??? (INSTEAD OF USING DOT PRODUCT)
 
     # ===== CONSTRAINTS =====
 
@@ -227,14 +233,23 @@ def place_h_using_ilp(points: List[numpy.ndarray]):
 
     # get solution unit vector
     if problem.status == 1:
-        for i, var in enumerate(problem.variables()):
-            print(f'{var.name}: {var.value()}')
-        new_h_vector = numpy.array([x.value(), y.value(), z.value()])
+        for var in problem.variables():
+            print(f'{var.name}: {var.varValue}')
+
+        # check for possible null var values
+        x_val = x.varValue if x.varValue is not None else 0.0     # TODO: check that 0.0 is an appropriate value to use for this
+        y_val = y.varValue if y.varValue is not None else 0.0
+        z_val = z.varValue if z.varValue is not None else 0.0
+        new_h_vector = np.array([x_val, y_val, z_val])
     else:
         print("Solving failed...")
         raise PulpSolverError
 
+    print('New H Vector: ', new_h_vector)
+
     # transform the resulting unit vector into relative coordinates with the hydrogen carbon bond length
     new_coordinates = tuple(center_point + new_h_vector * C_H_BOND_LENGTH)
+
+    print('New H Coordinates: ', new_coordinates)
 
     return new_coordinates

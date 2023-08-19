@@ -4,6 +4,7 @@ import networkx as nx
 import pickle as pk
 # import sys
 # sys.path.append('../src/chemistry_data_structure/')
+import numpy as np
 from chemistry_data_structure.helpers.vector_calculations import place_h_using_ilp
 from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
@@ -197,23 +198,47 @@ class ChemObjectTests(unittest.TestCase):
 
         self.assertEqual(set(mol.aromatic_atoms), {'C8', 'N3', 'C7', 'C6', 'C5', 'C4'})
 
-    def test_ilp_h_placement(self):
+    def test_ilp_h_placement_multi(self):
 
         # create a dummy methyl molecule and keep adding hydrogens to it
         mol = Molecule3D()
         mol.add_atom(Atom3D('P1', 'P', (1.0, 1.0, 1.0)))
 
+        points = [np.array(mol.get_atom('P1').coordinates)]
+
         # with iterations of adding hydrogens, output the pdbStr of the molecule
         for i in range(5):
 
             h_name = f'H{i}'
-            points = []
             coords = place_h_using_ilp(points)
+            points.append(np.array(coords))
             mol.add_atom(Atom3D(h_name, 'H', coords))
             mol.add_bond('P1', h_name, Bond3D({'P1', h_name}))
 
             # output pdb
-            # TODO: HEREEEEE WE AREEEE~!!!!!
+            with open(f"tests/out/pdb/h_placement_test_{i+1}H.pdb", "w") as out_file:
+                out_file.write(mol.pdbStr())
+
+    def test_ilp_h_placement_single(self):
+
+        # create a dummy methyl molecule and keep adding hydrogens to it
+        mol = Molecule3D()
+        mol.add_atom(Atom3D('P1', 'P', (0.0, 0.0, 0.0)))
+        mol.add_atom(Atom3D('C1', 'C', (1.0, 0.0, 0.0)))
+
+        points = [np.array(mol.get_atom('P1').coordinates),
+                  np.array(mol.get_atom('C1').coordinates)]
+
+        # with iterations of adding hydrogens, output the pdbStr of the molecule
+        h_name = 'H1'
+        coords = place_h_using_ilp(points)
+        points.append(np.array(coords))
+        mol.add_atom(Atom3D(h_name, 'H', coords))
+        mol.add_bond('P1', h_name, Bond3D({'P1', h_name}))
+
+        # output pdb
+        with open(f"tests/out/pdb/h_placement_test_single_H.pdb", "w") as out_file:
+            out_file.write(mol.pdbStr())
 
 # TODO: there is no field_fitting module now? Callum ples fix or remove...
 # class FieldFitTests(unittest.TestCase):
