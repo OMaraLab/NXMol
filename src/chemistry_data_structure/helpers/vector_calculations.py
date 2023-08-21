@@ -168,7 +168,7 @@ def gromos_tetrahedral_3H(points: list) -> list:
     return new_coordinates
 
 
-def place_h_using_ilp(points: List[np.ndarray]):
+def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
     """
     Uses an ILP solver to places one new hydrogen atom in the position that maximises
     the dot product between it's coordinates and all existing vector coordinates. This is a more
@@ -185,12 +185,16 @@ def place_h_using_ilp(points: List[np.ndarray]):
     # transform points to vector
     print('Points: ', points)
     if len(points) == 1:
-        return tuple(points[0] + np.array([1.0, 1.0, 1.0]))
+        new_coordinates = tuple(points[0] + np.array([1.0, 0.0, 0.0]))
+        print('New Coordinates: ', new_coordinates)
+        return new_coordinates
 
-    problem = LpProblem("Hydrogen vector placement problem", LpMaximize)
+    problem = LpProblem("Hydrogen vector placement problem", LpMinimize)
     center_point, vector_points = points[0], points[1:]
     unit_vectors = [(v - center_point) / norm(v - center_point) for v in vector_points]
 
+    print("Center Point: ", center_point)
+    print("Vector Points: ", vector_points)
     print("Unit Vectors: ", unit_vectors)
 
     # ===== SETS =====
@@ -200,51 +204,68 @@ def place_h_using_ilp(points: List[np.ndarray]):
     PX = [float(unit_vectors[i][0]) for i in V]      # x coords of existing vectors
     PY = [float(unit_vectors[i][1]) for i in V]      # y coords of existing vectors
     PZ = [float(unit_vectors[i][2]) for i in V]      # z coords of existing vectors
+    # TODO: don't normalise vector, deal with the absolute coordinates and then just restrain distances in a unit box
+    #  -1 <= (x - cx, y - cy, z - cz) <= 1
 
     print('PX: ', PX)
     print('PY: ', PY)
     print('PZ: ', PZ)
 
     # ===== VARIABLES =====
-    p = [LpVariable(f"p_{i}", lowBound=-1.0, upBound=1.0, cat=LpContinuous) for i in V]         # dot product variable
-    x = LpVariable("x", lowBound=-1.0, upBound=1.0, cat=LpContinuous)                           # coordinate variables for new vector
+    # d = [LpVariable(f"d_{i}", lowBound=-1.0, upBound=1.0, cat=LpContinuous) for i in V]       # dot product variable
+    d = [[LpVariable(f"d_{i}", lowBound=0.0, upBound=1.0, cat=LpContinuous) for i in V] for j in range(3)]          # distance variable for d_ij for each vector i and each dimension j (x, y, z)
+    a = [[LpVariable(f"a_{i}", lowBound=0.0, upBound=1.0, cat=LpContinuous) for i in V] for j in range(3)]          # abs distance variable
+    b = [[LpVariable(f"b_{i}", cat=LpBinary) for i in V] for j in range(3)]                                         # abs binary switch
+    # TODO: handle these absolute values to calculate manhattan distance!!!
+
+    # variables for new vector direction
+    x = LpVariable("x", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
     y = LpVariable("y", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
     z = LpVariable("z", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
-    d = [LpVariable(f"d_{i}", cat=LpContinuous) for i in V]         # distance variable
+    # d = [LpVariable(f"d_{i}", cat=LpContinuous) for i in V]         # distance variable
 
     # ===== OBJECTIVE =====
 
-    # solve a min max problem, maximize the minimum of the distance between the new vector and each other vector
-    problem.setObjective(sum(p[i] for i in V))
-
-    # TODO: we actually want to maximize the ABSOLUTE DISTANCE VALUE... may need absolute binding variable...
-
-    # TODO: why don't we have a d distance parameter that is literal euclidean distance between the points,
-    #   we find the point that is furthest away from all other points, and then constrain the point to exist on
-    #   the unit sphere from the central point??? (INSTEAD OF USING DOT PRODUCT)
+    # minimize the dot product between the new vector and each existing vector (-1 is the furthest point away)
+    problem.setObjective(sum(d[i] for i in V))
 
     # ===== CONSTRAINTS =====
 
-    # 1) bound the new point with a dot product between -1 and 1 between the new vector and the other vector
+    # 1) define the dot product between the new vector and the other vector
     for i in V:
-        problem += p[i] <= x * PX[i] + y * PY[i] + z * PZ[i]
+        #problem += d[i] == x * PX[i] + y * PY[i] + z * PZ[i]
+
+        # define manhattan distance
+        problem += d[i] == x - PX[i] + y - PY[i] + z - PZ[i]
 
     # 2) bind the distance variable as vector distance  # TODO: this is the manhattan distance... ;(
-    for i in V:
-        problem += d[i] == x - PX[i] + y - PY[i] + z - PZ[i]
-        problem += d[i] >= 0.00001
+    # for i in V:
+    #     problem += d[i] == x - PX[i] + y - PY[i] + z - PZ[i]
+    #     problem += d[i] >= 0.00001
 
-        # TODO: lets figur ehtis out yoooo
 
     # ===== SOLVING =====
     problem.solve()
 
-    # get solution unit vector
-    if problem.status == 1:
+    if debug:
+
+        # problem
+        print("\n===PROBLEM===")
+        print(problem)
+
+        # variables
+        print("===FINAL VALUES===")
         for var in problem.variables():
             print(f'{var.name}: {var.varValue}')
 
-        # check for possible null var values
+        # objective value
+        print("Obj Value: ", problem.objective.value())
+
+
+    # get solution unit vector
+    if problem.status == 1:
+
+        # check for possible null var values (where the solution does not depend on these variables)
         x_val = x.varValue if x.varValue is not None else 0.0     # TODO: check that 0.0 is an appropriate value to use for this
         y_val = y.varValue if y.varValue is not None else 0.0
         z_val = z.varValue if z.varValue is not None else 0.0

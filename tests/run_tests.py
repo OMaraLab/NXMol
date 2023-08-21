@@ -209,8 +209,10 @@ class ChemObjectTests(unittest.TestCase):
         # with iterations of adding hydrogens, output the pdbStr of the molecule
         for i in range(5):
 
+            print(f"\nPlacing Hydrogen H{i}")
+
             h_name = f'H{i}'
-            coords = place_h_using_ilp(points)
+            coords = place_h_using_ilp(points, debug=True)
             points.append(np.array(coords))
             mol.add_atom(Atom3D(h_name, 'H', coords))
             mol.add_bond('P1', h_name, Bond3D({'P1', h_name}))
@@ -225,20 +227,22 @@ class ChemObjectTests(unittest.TestCase):
         mol = Molecule3D()
         mol.add_atom(Atom3D('P1', 'P', (0.0, 0.0, 0.0)))
         mol.add_atom(Atom3D('C1', 'C', (1.0, 0.0, 0.0)))
+        mol.add_bond('P1', 'C1', Bond3D({'C1', 'P1'}))
 
         points = [np.array(mol.get_atom('P1').coordinates),
                   np.array(mol.get_atom('C1').coordinates)]
 
         # with iterations of adding hydrogens, output the pdbStr of the molecule
-        h_name = 'H1'
-        coords = place_h_using_ilp(points)
+        coords = place_h_using_ilp(points, debug=True)
         points.append(np.array(coords))
-        mol.add_atom(Atom3D(h_name, 'H', coords))
-        mol.add_bond('P1', h_name, Bond3D({'P1', h_name}))
+        mol.add_atom(Atom3D('H1', 'H', coords))
+        mol.add_bond('P1', 'H1', Bond3D({'P1', 'H1'}))
 
         # output pdb
         with open(f"tests/out/pdb/h_placement_test_single_H.pdb", "w") as out_file:
             out_file.write(mol.pdbStr())
+
+        self.assertEqual(mol.get_atom('H1').coordinates, (-1.0, 0.0, 0.0))
 
 # TODO: there is no field_fitting module now? Callum ples fix or remove...
 # class FieldFitTests(unittest.TestCase):
