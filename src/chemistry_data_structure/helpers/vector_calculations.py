@@ -89,26 +89,31 @@ def gromos_tetrahedral_1H(points: list):
     rk = points[2]
     rl = points[3]
 
-    # SPECIAL CASE FOR PRIOR TRIGONAL-PLANAR BOND ANGLE
+    # handle special case of prior trigonal planar center
     v1 = ri - rj
     v2 = ri - rk
-    # 2 radians = approx. 115 degrees
-    angle = get_angle_between_vectors(v1, v2)
-    if get_angle_between_vectors(v1, v2) > 2:
-        new_coordinates = ri + cross(v1, v2)
-        return tuple(new_coordinates.tolist())
+    v3 = ri - rl
+    a1 = get_angle_between_vectors(v1, v2)
+    a2 = get_angle_between_vectors(v1, v3)
+    a3 = get_angle_between_vectors(v2, v3)
 
-    # define sum vector and norm of sum
-    s = 3 * ri - rj - rk - rl
-    s_norm = norm(s)
+    # check for trigonal planar bond angles between all vectors, for special case
+    if all([a > 2 for a in [a1, a2, a3]]):  # 2 radians = approx. 115 degrees
 
-    # define hydrogen bond distance
-    d = C_H_BOND_LENGTH
+        cross_vec = cross(v1, v2)
+        rn = ri + C_H_BOND_LENGTH * (cross_vec / norm(cross_vec))
 
-    # calculate resulting hydrogen vector
-    rn = ri + d * (s / s_norm)
+    else:
+
+        # define sum vector and norm of sum
+        s = 3 * ri - rj - rk - rl
+        s_norm = norm(s)
+
+        # calculate resulting hydrogen vector
+        rn = ri + C_H_BOND_LENGTH * (s / s_norm)
+
+    # return coords as tuple
     new_coordinates = tuple(rn.tolist())
-
     return new_coordinates
 
 
@@ -183,7 +188,6 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
     """
 
     # transform points to vector
-    print('Points: ', points)
     if len(points) == 1:
         new_coordinates = tuple(points[0] + np.array([1.0, 0.0, 0.0]))
         print('New Coordinates: ', new_coordinates)
@@ -194,9 +198,10 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
     vector_points = points[1:]
     unit_vectors = [(v - center_point) / norm(v - center_point) for v in vector_points]
 
-    print("Center Point: ", center_point)
-    # print("Vector Points: ", vector_points)
-    # print("Unit Vectors: ", unit_vectors)
+    if debug:
+        print('Points: ', points)
+        print("Center Point: ", center_point)
+        print("Unit Vectors: ", unit_vectors)
 
     DIMENSIONS = ['x', 'y', 'z']
 
@@ -208,23 +213,14 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
     PY = [float(unit_vectors[i][1]) for i in V]      # y coords of existing vectors
     PZ = [float(unit_vectors[i][2]) for i in V]      # z coords of existing vectors
 
-    print('PX: ', PX)
-    print('PY: ', PY)
-    print('PZ: ', PZ)
+    if debug:
+        print('PX: ', PX)
+        print('PY: ', PY)
+        print('PZ: ', PZ)
 
     # ===== VARIABLES =====
     d = [LpVariable(f"d_{i}", lowBound=-1.0, upBound=1.0, cat=LpContinuous) for i in V]       # dot product variable
-    p = [LpVariable(f"p_{i}", cat=LpContinuous) for i in V]                                   # distance variable
-
-
-    # d = [[LpVariable(f"d_{i}{DIMENSIONS[j]}", cat=LpContinuous) for j in range(3)] for i in V]      # distance d_ij between new point and each existing point i and each dimension j (x, y, z)
-    # a = [[LpVariable(f"a_{i}{DIMENSIONS[j]}", cat=LpContinuous) for j in range(3)] for i in V]      # absolute distance d_ij between new point and each existing point i and each dimension j (x, y, z)
-    # b = [[LpVariable(f"b_{i}{DIMENSIONS[j]}", cat=LpBinary) for j in range(3)] for i in V]      # binary variable for absolute value control
-
-    # set bounds for distance to central point
-    # for j in range(3):
-    #     d[0][j].lowBound = -1.0
-    #     d[0][j].upBound = 1.0
+    p = [LpVariable(f"p_{i}", cat=LpContinuous) for i in V]                                   # dummy distance variable
 
     # variables for new vector direction
     x = LpVariable("x", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
@@ -234,54 +230,19 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
     # ===== OBJECTIVE =====
 
     # minimize the dot product between the new vector and each existing vector (-1 is the furthest point away)
-
-    # maximize the distance between the new point and the existing points on the unit cube around the central point
-    # problem.setObjective(sum(a[i][j] for i in V for j in range(3)))
-
     obj = LpVariable(f"obj", cat=LpContinuous)
     problem += obj == sum(d[i] for i in V)
     problem.setObjective(obj)
 
     # ===== CONSTRAINTS =====
 
-    N = 10
     for i in V:
 
-        # dot product
-        # print(f"Vector i: PX: {PX[i]}, PY: {PY[i]}, PZ: {PZ[i]}")
         # 1) define the dot product between the new vector and the other vector
         problem += d[i] == x * PX[i] + y * PY[i] + z * PZ[i]
 
         # 2) dummy constraint to bind coordinate variables in case of 0s in dot product
         problem += p[i] == x - PX[i] + y - PY[i] + z - PZ[i]
-
-        # # define manhattan distance
-        # problem += d[i][0] == x - PX[i]
-        # problem += d[i][1] == y - PY[i]
-        # problem += d[i][2] == z - PZ[i]
-        #
-        # # 2) define
-        # for j in range(3):
-        #     problem += a[i][j] <= d[i][j] + N * (1 - b[i][j])
-        #     problem += a[i][j] <= -d[i][j] + N * b[i][j]
-        #
-        #     # extra constraints for distance to central point
-        #     if i == 0:
-        #         problem += d[i][0] != 0.0
-
-
-    # 2) constrain the new point on the unit cube around the central point
-    # problem += x - center_point[0] <= 1.0
-    # problem += x - center_point[0] >= -1.0
-    # problem += y - center_point[1] <= 1.0
-    # problem += y - center_point[1] >= -1.0
-    # problem += z - center_point[2] <= 1.0
-    # problem += z - center_point[2] >= -1.0
-
-    # 2) bind the distance variable as vector distance  # TODO: this is the manhattan distance... ;(
-    # for i in V:
-    #     problem += d[i] == x - PX[i] + y - PY[i] + z - PZ[i]
-    #     problem += d[i] >= 0.00001
 
     # ===== SOLVING =====
     problem.solve()
@@ -305,7 +266,7 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
     if problem.status == 1:
 
         # check for possible null var values (where the solution does not depend on these variables)
-        x_val = x.varValue if x.varValue is not None else 0.0     # TODO: check that 0.0 is an appropriate value to use for this
+        x_val = x.varValue if x.varValue is not None else 0.0
         y_val = y.varValue if y.varValue is not None else 0.0
         z_val = z.varValue if z.varValue is not None else 0.0
         new_h_vector = np.array([x_val, y_val, z_val])
@@ -313,14 +274,14 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
         print("Solving failed...")
         raise PulpSolverError
 
-    print('New H Vector: ', new_h_vector)
-
-    # TODO: we can normalise this vector after the ilp!!! (i.e. shorten it)
+    # normalise all hydrogen placement vectors
     new_h_vector = new_h_vector / norm(new_h_vector)
 
     # transform the resulting unit vector into relative coordinates with the hydrogen carbon bond length
     new_coordinates = tuple(center_point + new_h_vector * C_H_BOND_LENGTH)
 
-    print('New H Coordinates: ', new_coordinates)
+    if debug:
+        print('New H Vector: ', new_h_vector)
+        print('New H Coordinates: ', new_coordinates)
 
     return new_coordinates

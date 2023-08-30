@@ -911,11 +911,11 @@ class _3DChemicalObj(_2DChemicalObj):
     def __init__(self, atoms, bonds, name: str = ''):
         super().__init__(atoms, bonds, name)
 
-    def add_atom(self, atom: Atom3D) -> None:
-        if not isinstance(atom, Atom3D):
+    def add_atom(self, atom: _Atom) -> None:
+        if not isinstance(atom, Atom2D):
             # not sure if we actually want to add atoms this way
             # might make it  easier to enforce minimum information
-            raise TypeError(f'atom must be of type Atom3D, but is of type f{type(atom)}')
+            raise TypeError(f'atom must be of type Atom2D, but is of type f{type(atom)}')
         if atom.name in self._graph.nodes:
             raise IndexError # Error type subject to change
         self._graph.add_node(atom.name)

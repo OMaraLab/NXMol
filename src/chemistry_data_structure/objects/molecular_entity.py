@@ -314,28 +314,24 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                 if num_h_to_place == 3:
                     new_coordinates.extend(gromos_tetrahedral_3H(points))
 
-                # Case 4: methyl... ignore
+                # Case 4: methyl... use ilp method
                 if num_h_to_place == 4:
-                    # TODO: even if this is an edge case, make it return coords
-                    continue
+
+                    for i in range(num_h_to_place):
+                        coords = place_h_using_ilp(points, debug=False)
+                        new_coordinates.append(coords)
+                        points.append(np.array(coords))
 
             else:
-                print('Using ILP Method...')
-                # TODO: FIX THIS
-                coordinates = place_h_using_ilp(points)
-                print(coordinates)
-                new_coordinates.append(coordinates)
 
-                # heavy_atom_pdb_index = atom.get_index('pdb')
-                # new_coordinates.append((1.3 * heavy_atom_pdb_index,
-                #                         0.1 * (-1 if heavy_atom_pdb_index % 2 == 0 else + 1),
-                #                         0.1 * (heavy_atom_pdb_index % 5)))
+                # for hybridisations larger than 4, use ilp method to place hydrogens
+                for i in range(num_h_to_place):
+                    coords = place_h_using_ilp(points, debug=False)
+                    new_coordinates.append(coords)
+                    points.append(np.array(coords))
 
             # Update atom coordinates
             for (n, atom_id) in enumerate(h_neighbour_ids):
-
-                print("H Atom ID: ", atom_id)
-                print("New Coordinates: ", new_coordinates[n])
 
                 self._graph._node[atom_id] = Atom3D(
                     index={'name': atom_id},
