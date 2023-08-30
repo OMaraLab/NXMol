@@ -29,7 +29,8 @@ class Molecule2D(_2DChemicalObj):
     def __init__(self,
                  atoms: List[Atom2D] = None,
                  bonds: List[Union[str, str, Bond2D]] = None,
-                 name: str = ''
+                 name: str = '',
+                 net_charge: int = None
                  ):
 
         if atoms is None:
@@ -38,7 +39,7 @@ class Molecule2D(_2DChemicalObj):
             bonds = []
 
         # init super class
-        super().__init__(atoms, bonds, name)
+        super().__init__(atoms, bonds, name, net_charge)
         self.attributes = {}
         self.angles = {}
         self.dihedrals = {}
@@ -60,14 +61,15 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                  esp_grid_coords: np.array = None,
                  esp_grid_charge: np.array = None,
                  esp_grid_parameters: dict = None,
-                 name: str = ''
+                 name: str = '',
+                 net_charge: int = None
                  ):
         if atoms is None:
             atoms = []
         if bonds is None:
             bonds = []
 
-        super().__init__(atoms, bonds, name)
+        super().__init__(atoms, bonds, name, net_charge)
         self._esp_grid_coords = esp_grid_coords
         self._esp_grid_charge = esp_grid_charge
         self._esp_grid_parameters = esp_grid_parameters
@@ -406,7 +408,6 @@ class RDKitMolecule(_3DChemicalObj):
     """
     TODO: WARNING! NOT IMPLEMENTED.
     """
-
     def __init__(self,
                  atoms: List[RDKitAtom] = None,
                  bonds: List[RDKitBond] = None,
