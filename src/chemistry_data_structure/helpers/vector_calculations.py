@@ -8,7 +8,7 @@ from math import sqrt, cos, sin, pi, acos
 import numpy as np
 from numpy import array as vector, cross, dot
 from numpy.linalg import norm
-from pulp import LpProblem, LpMinimize, LpMaximize, LpVariable, LpStatus, LpContinuous
+from pulp import LpProblem, LpMinimize, LpMaximize, LpVariable, LpStatus, LpContinuous, LpBinary
 from pulp import PULP_CBC_CMD, PulpSolverError
 
 C_H_BOND_LENGTH = 1.0
@@ -190,12 +190,15 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
         return new_coordinates
 
     problem = LpProblem("Hydrogen vector placement problem", LpMinimize)
-    center_point, vector_points = points[0], points[1:]
+    center_point = points[0]
+    vector_points = points[1:]
     unit_vectors = [(v - center_point) / norm(v - center_point) for v in vector_points]
 
     print("Center Point: ", center_point)
-    print("Vector Points: ", vector_points)
-    print("Unit Vectors: ", unit_vectors)
+    # print("Vector Points: ", vector_points)
+    # print("Unit Vectors: ", unit_vectors)
+
+    DIMENSIONS = ['x', 'y', 'z']
 
     # ===== SETS =====
     V = range(len(unit_vectors))      # existing vectors to consider in the placement
@@ -204,45 +207,81 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
     PX = [float(unit_vectors[i][0]) for i in V]      # x coords of existing vectors
     PY = [float(unit_vectors[i][1]) for i in V]      # y coords of existing vectors
     PZ = [float(unit_vectors[i][2]) for i in V]      # z coords of existing vectors
-    # TODO: don't normalise vector, deal with the absolute coordinates and then just restrain distances in a unit box
-    #  -1 <= (x - cx, y - cy, z - cz) <= 1
 
     print('PX: ', PX)
     print('PY: ', PY)
     print('PZ: ', PZ)
 
     # ===== VARIABLES =====
-    # d = [LpVariable(f"d_{i}", lowBound=-1.0, upBound=1.0, cat=LpContinuous) for i in V]       # dot product variable
-    d = [[LpVariable(f"d_{i}", lowBound=0.0, upBound=1.0, cat=LpContinuous) for i in V] for j in range(3)]          # distance variable for d_ij for each vector i and each dimension j (x, y, z)
-    a = [[LpVariable(f"a_{i}", lowBound=0.0, upBound=1.0, cat=LpContinuous) for i in V] for j in range(3)]          # abs distance variable
-    b = [[LpVariable(f"b_{i}", cat=LpBinary) for i in V] for j in range(3)]                                         # abs binary switch
-    # TODO: handle these absolute values to calculate manhattan distance!!!
+    d = [LpVariable(f"d_{i}", lowBound=-1.0, upBound=1.0, cat=LpContinuous) for i in V]       # dot product variable
+    p = [LpVariable(f"p_{i}", cat=LpContinuous) for i in V]                                   # distance variable
+
+
+    # d = [[LpVariable(f"d_{i}{DIMENSIONS[j]}", cat=LpContinuous) for j in range(3)] for i in V]      # distance d_ij between new point and each existing point i and each dimension j (x, y, z)
+    # a = [[LpVariable(f"a_{i}{DIMENSIONS[j]}", cat=LpContinuous) for j in range(3)] for i in V]      # absolute distance d_ij between new point and each existing point i and each dimension j (x, y, z)
+    # b = [[LpVariable(f"b_{i}{DIMENSIONS[j]}", cat=LpBinary) for j in range(3)] for i in V]      # binary variable for absolute value control
+
+    # set bounds for distance to central point
+    # for j in range(3):
+    #     d[0][j].lowBound = -1.0
+    #     d[0][j].upBound = 1.0
 
     # variables for new vector direction
     x = LpVariable("x", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
     y = LpVariable("y", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
     z = LpVariable("z", lowBound=-1.0, upBound=1.0, cat=LpContinuous)
-    # d = [LpVariable(f"d_{i}", cat=LpContinuous) for i in V]         # distance variable
 
     # ===== OBJECTIVE =====
 
     # minimize the dot product between the new vector and each existing vector (-1 is the furthest point away)
-    problem.setObjective(sum(d[i] for i in V))
+
+    # maximize the distance between the new point and the existing points on the unit cube around the central point
+    # problem.setObjective(sum(a[i][j] for i in V for j in range(3)))
+
+    obj = LpVariable(f"obj", cat=LpContinuous)
+    problem += obj == sum(d[i] for i in V)
+    problem.setObjective(obj)
 
     # ===== CONSTRAINTS =====
 
-    # 1) define the dot product between the new vector and the other vector
+    N = 10
     for i in V:
-        #problem += d[i] == x * PX[i] + y * PY[i] + z * PZ[i]
 
-        # define manhattan distance
-        problem += d[i] == x - PX[i] + y - PY[i] + z - PZ[i]
+        # dot product
+        # print(f"Vector i: PX: {PX[i]}, PY: {PY[i]}, PZ: {PZ[i]}")
+        # 1) define the dot product between the new vector and the other vector
+        problem += d[i] == x * PX[i] + y * PY[i] + z * PZ[i]
+
+        # 2) dummy constraint to bind coordinate variables in case of 0s in dot product
+        problem += p[i] == x - PX[i] + y - PY[i] + z - PZ[i]
+
+        # # define manhattan distance
+        # problem += d[i][0] == x - PX[i]
+        # problem += d[i][1] == y - PY[i]
+        # problem += d[i][2] == z - PZ[i]
+        #
+        # # 2) define
+        # for j in range(3):
+        #     problem += a[i][j] <= d[i][j] + N * (1 - b[i][j])
+        #     problem += a[i][j] <= -d[i][j] + N * b[i][j]
+        #
+        #     # extra constraints for distance to central point
+        #     if i == 0:
+        #         problem += d[i][0] != 0.0
+
+
+    # 2) constrain the new point on the unit cube around the central point
+    # problem += x - center_point[0] <= 1.0
+    # problem += x - center_point[0] >= -1.0
+    # problem += y - center_point[1] <= 1.0
+    # problem += y - center_point[1] >= -1.0
+    # problem += z - center_point[2] <= 1.0
+    # problem += z - center_point[2] >= -1.0
 
     # 2) bind the distance variable as vector distance  # TODO: this is the manhattan distance... ;(
     # for i in V:
     #     problem += d[i] == x - PX[i] + y - PY[i] + z - PZ[i]
     #     problem += d[i] >= 0.00001
-
 
     # ===== SOLVING =====
     problem.solve()
@@ -275,6 +314,9 @@ def place_h_using_ilp(points: List[np.ndarray], debug: bool = False):
         raise PulpSolverError
 
     print('New H Vector: ', new_h_vector)
+
+    # TODO: we can normalise this vector after the ilp!!! (i.e. shorten it)
+    new_h_vector = new_h_vector / norm(new_h_vector)
 
     # transform the resulting unit vector into relative coordinates with the hydrogen carbon bond length
     new_coordinates = tuple(center_point + new_h_vector * C_H_BOND_LENGTH)

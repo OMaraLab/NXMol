@@ -203,6 +203,7 @@ class ChemObjectTests(unittest.TestCase):
         # create a dummy methyl molecule and keep adding hydrogens to it
         mol = Molecule3D()
         mol.add_atom(Atom3D('P1', 'P', (1.0, 1.0, 1.0)))
+        # mol.add_atom(Atom3D('P1', 'P', (0.0, 0.0, 0.0)))
 
         points = [np.array(mol.get_atom('P1').coordinates)]
 
