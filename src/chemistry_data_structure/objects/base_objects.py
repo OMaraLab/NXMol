@@ -24,6 +24,8 @@ ELEMENT_COLOURS = {'H': '#eeeeee',
                    'BR': 'pink',
                    'SI': 'yellow'}
 
+MARKED_COLOURS = {'Marked': '#ff91a4', 'Unmarked': '#eeeeee'}
+
 
 class _2DChemicalObj:
     """
@@ -380,22 +382,62 @@ class _2DChemicalObj:
                    save_fp: str = None,
                    font_sizes: dict = None,
                    offsets: tuple = None,
-                   draw_formal_charges: bool = True,
-                   draw_atom_ids: bool = True):
+                   node_size: int = None,
+                   node_label_mode: str = '',
+                   draw_formal_charges: bool = False,
+                   draw_chiral: bool = False,
+                   draw_marked_atoms: bool = False):
         """
         Draws the molecular graph in kamada kawai layout.
+        :param fixed_heavy_atoms: a dictionary of fixed node positions for heavy atoms.
+        :param backbone_only: if true, only draw the backbone of the molecule (only heavy atoms, no hydrogens)
         :param show: if true, show plot, otherwise don't
-        :param save_name: if specified, save the png to the given fp.
+        :param save_fp: if specified, save the png to the given fp.
+        :param font_sizes: a dictionary of font sizes: {'node': int, 'edge': int, 'label': int}
+        :param offsets: position offsets for the labels
+        :param node_label_mode: one of 'id', 'element' or other
+        :param draw_formal_charges: if true, draw atomic formal charge labels
+        :param draw_chiral: if true, draw R and S chirality info on chiral centers
+        :param draw_marked_atoms: if true, uses a colour scheme to show marked atoms as red and others as grey
         """
-        node_font_sz, edge_font_sz, charge_font_sz = font_sizes['node'] if font_sizes else 14, \
-                                                     font_sizes['edge'] if font_sizes else 12, \
-                                                     font_sizes['label'] if font_sizes else 14
+        node_font_sz, edge_font_sz, charge_font_sz = font_sizes['node'] if font_sizes else None, \
+                                                     font_sizes['edge'] if font_sizes else None, \
+                                                     font_sizes['label'] if font_sizes else None
 
+        # get marked atom ids
+        marked_atom_ids = set()
+        if draw_marked_atoms:
+            for atom in self._graph.nodes.values():
+                for frag_name, fragment in self._fragments.items():
+                    if 'marked' in frag_name and atom.get_index() in fragment:
+                        marked_atom_ids.add(atom.get_index())
+
+        # graph node drawing options
         if backbone_only:
+
+            # only draw backbone (non-hydrogen atoms)
             graph = self.get_backbone_graph()
             formal_charges = {a.get_index(): a.formal_charge for a in graph.nodes.values()}
             bond_orders = {frozenset(bond_ids): self.get_bond(bond_ids[0], bond_ids[1]).order for bond_ids in graph.edges()}
+
+        elif draw_marked_atoms:
+
+            # remove hydrogens that aren't attached to a marked atom
+            first_neighbours = self.first_neighbours
+            draw_atoms = set(self.atoms.keys())
+            for a_id, a in self.atoms.items():
+                if a.element == 'H' and set(first_neighbours[a_id]).issubset(marked_atom_ids):
+                    draw_atoms.remove(a_id)
+
+            print("Draw Atoms: ", draw_atoms)
+            print("Marked Atom IDs: ", marked_atom_ids)
+            graph = self._graph.subgraph(draw_atoms)
+
+            formal_charges = {a_id: '?' for a in graph.nodes()}
+            bond_orders = {frozenset(bond_ids): '?' for bond_ids in graph.edges()}
         else:
+
+            # otherwise draw normal graph
             graph = self._graph
             print(self.atoms)
             formal_charges = self.formal_charges
@@ -404,7 +446,12 @@ class _2DChemicalObj:
         # create colour map of element colours
         colour_map = []
         for atom in graph.nodes.values():
-            colour_map.append(ELEMENT_COLOURS[atom.element.strip("0123456789").upper()])
+
+            # apply marking colour scheme
+            if draw_marked_atoms:
+                colour_map.append(MARKED_COLOURS['Marked'] if atom.get_index() in marked_atom_ids else MARKED_COLOURS['Unmarked'])
+            else:
+                colour_map.append(ELEMENT_COLOURS[atom.element.strip("0123456789").upper()])
 
         # setup layouts
         kamada_kawai = False
@@ -412,9 +459,8 @@ class _2DChemicalObj:
             pos = nx.spring_layout(graph, pos=fixed_heavy_atoms, fixed=fixed_heavy_atoms.keys())
         else:
             kamada_kawai = True
-            pos = nx.kamada_kawai_layout(graph)
+            pos = nx.kamada_kawai_layout(graph, scale=2)
 
-        #pos = nx.spring_layout(self._graph)
         if offsets is None:
             if backbone_only:
                 offsets = (0.5, 0.15)
@@ -426,18 +472,38 @@ class _2DChemicalObj:
         if kamada_kawai:
             offset_pos = {k: (v[0] + 0.06, v[1] + 0.05) for k, v in pos.items()}
 
+        # set node labels to ids, labels or by default only the elements
+        if node_label_mode == 'id':
+            node_labels = {a_id: a_id for a_id in graph.nodes.keys()}
+        elif node_label_mode == 'element':
+            node_labels = {a_id: a.element for a_id, a in graph.nodes.items()}
+        else:
+            node_labels = {}
+
         # draw graph, with node and edge labels
         fig = plt.figure(figsize=(6, 5), dpi=600)
-        nx.draw(graph, pos=pos, with_labels=draw_atom_ids, font_size=node_font_sz,
-                font_color='black', node_color=colour_map, node_size=600, edge_color='black')
+        nx.draw(graph,
+                pos=pos,
+                labels=node_labels,
+                font_size=node_font_sz,
+                font_color='black',
+                node_color=colour_map,
+                node_size=node_size,
+                edge_color='black')
+
+        # node and edge formatting
         node_path_coll = plt.gca().collections[0]
         node_path_coll.set_edgecolor("#afafaf")
         node_path_coll.set_lw(2)
         edge_path_coll = plt.gca().collections[1]
         edge_path_coll.set_lw(1.5)
+
+        # draw formal charges
         if draw_formal_charges:
             nx.draw_networkx_labels(graph, offset_pos, formal_charges,
                                     font_color='red', font_size=edge_font_sz)
+
+        # draw bond orders
         nx.draw_networkx_edge_labels(graph, pos, bond_orders, font_size=charge_font_sz)
 
         if backbone_only:
@@ -879,9 +945,9 @@ class _2DChemicalObj:
                     # pop queue
                     a_id, depth = search_queue.get()
 
-                    # if restrict_arom and a_id in self.aromatic_atoms:
-                    #     # TODO: implement aromatic atom property
-                    #     continue
+                    # don't mark aromatic atoms, if specified
+                    if restrict_arom and a_id in self.aromatic_atoms:
+                        continue
 
                     # add atom id to marked group fragment and get neighbouring ids
                     marked_frags[g_id].add(a_id)
@@ -904,6 +970,9 @@ class _2DChemicalObj:
                             if not n_id in marked_frags[g_id]:
                                 search_queue.put((n_id, depth + 1))
 
+        # add all marked fragments to fragments dictionary, as sub-graphs
+        for g_id, a_ids in marked_frags.items():
+            self._fragments[f'marked_{g_id}'] = self.graph.subgraph(a_ids)
         return marked_frags
 
     def add_fragment(self, index: str, atom_ids: set):
