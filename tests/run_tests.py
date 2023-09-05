@@ -259,21 +259,23 @@ class ChemObjectTests(unittest.TestCase):
         # TODO: fix formatting, add aromaticity restriction, remove hydrogens...
         # TODO: fix scaling of fonts etc. with image size
 
-        font_sizes = {'node': 8, 'edge': None, 'label': None}
+        font_sizes = {'node': 6, 'edge': 8, 'label': None}
         offsets = (0.8, 0.4)
-        # t2_offsets = (0.54, 0.24)
-        # t1_heavy_offsets = (0.3, 0.2)
-        # t2_heavy_offsets = (0.2, 0.2)
 
         # display plots
         mol.draw_graph(font_sizes=font_sizes,
                        save_fp=f"tests/imgs/{mol_name}.png",
                        show=False,
                        node_label_mode='element',
-                       node_size=140, # TODO: we need to make this relative to the size of the graph
+                       node_size=140,  # TODO: we need to make this relative to the size of the graph
                        draw_marked_atoms=True)
 
         # TODO: fix offsets of node labels, and node sizes etc.
+
+    def test_chirality_drawing(self):
+
+        return
+
 
 # TODO: there is no field_fitting module now? Callum ples fix or remove...
 # class FieldFitTests(unittest.TestCase):

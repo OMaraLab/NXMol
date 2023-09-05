@@ -470,7 +470,9 @@ class _2DChemicalObj:
 
         # override if kamada kawai
         if kamada_kawai:
-            offset_pos = {k: (v[0] + 0.06, v[1] + 0.05) for k, v in pos.items()}
+            #offset_pos = {k: (v[0] + 0.06, v[1] + 0.05) for k, v in pos.items()}
+            offset_pos = pos
+
 
         # set node labels to ids, labels or by default only the elements
         if node_label_mode == 'id':
@@ -481,12 +483,13 @@ class _2DChemicalObj:
             node_labels = {}
 
         # draw graph, with node and edge labels
-        fig = plt.figure(figsize=(6, 5), dpi=600)
+        fig = plt.figure(dpi=600, figsize=(6, 5))
         nx.draw(graph,
                 pos=pos,
                 labels=node_labels,
                 font_size=node_font_sz,
                 font_color='black',
+                font_family='serif',#'monospace',
                 node_color=colour_map,
                 node_size=node_size,
                 edge_color='black')
@@ -494,22 +497,28 @@ class _2DChemicalObj:
         # node and edge formatting
         node_path_coll = plt.gca().collections[0]
         node_path_coll.set_edgecolor("#afafaf")
-        node_path_coll.set_lw(2)
+        node_path_coll.set_lw(1.5)
         edge_path_coll = plt.gca().collections[1]
+        edge_path_coll.set_edgecolor("#575C5D")
         edge_path_coll.set_lw(1.5)
 
         # draw formal charges
         if draw_formal_charges:
             nx.draw_networkx_labels(graph, offset_pos, formal_charges,
-                                    font_color='red', font_size=edge_font_sz)
+                                    font_color='red', font_size=charge_font_sz)
 
         # draw bond orders
-        nx.draw_networkx_edge_labels(graph, pos, bond_orders, font_size=charge_font_sz)
+        nx.draw_networkx_edge_labels(graph,
+                                     pos,
+                                     bond_orders,
+                                     font_size=edge_font_sz,
+                                     verticalalignment="bottom",
+                                     bbox=dict(alpha=0))
 
-        if backbone_only:
-            plt.margins(x=0.2, y=0.2)
-        else:
-            plt.margins(x=0.1, y=0.1)
+        # if backbone_only:
+        #     plt.margins(x=0.2, y=0.2)
+        # else:
+        #     plt.margins(x=0.1, y=0.1)
 
         # optionally show or save molecular graph
         if show:
