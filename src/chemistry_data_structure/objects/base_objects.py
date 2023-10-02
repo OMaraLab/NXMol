@@ -382,8 +382,8 @@ class _2DChemicalObj:
                    save_fp: str = None,
                    font_sizes: dict = None,
                    offsets: tuple = None,
-                   node_size: int = None,
-                   node_label_mode: str = '',
+                   node_size: int = 300,
+                   node_label_mode: str = 'element',
                    draw_formal_charges: bool = False,
                    draw_chiral: bool = False,
                    draw_marked_atoms: bool = False):
@@ -400,8 +400,8 @@ class _2DChemicalObj:
         :param draw_chiral: if true, draw R and S chirality info on chiral centers
         :param draw_marked_atoms: if true, uses a colour scheme to show marked atoms as red and others as grey
         """
-        node_font_sz, edge_font_sz, charge_font_sz = font_sizes['node'] if font_sizes else None, \
-                                                     font_sizes['edge'] if font_sizes else None, \
+        node_font_sz, edge_font_sz, charge_font_sz = font_sizes['node'] if font_sizes else node_size // 50, \
+                                                     font_sizes['edge'] if font_sizes else node_size // 45, \
                                                      font_sizes['label'] if font_sizes else None
 
         # get marked atom ids
@@ -418,6 +418,7 @@ class _2DChemicalObj:
             # only draw backbone (non-hydrogen atoms)
             graph = self.get_backbone_graph()
             formal_charges = {a.get_index(): a.formal_charge for a in graph.nodes.values()}
+            chirality = {a.get_index(): a.chirality for a in graph.nodes.values()}
             bond_orders = {frozenset(bond_ids): self.get_bond(bond_ids[0], bond_ids[1]).order for bond_ids in graph.edges()}
 
         elif draw_marked_atoms:
@@ -434,6 +435,7 @@ class _2DChemicalObj:
             graph = self._graph.subgraph(draw_atoms)
 
             formal_charges = {a_id: '?' for a in graph.nodes()}
+            chirality = {a.get_index(): a.chirality for a in graph.nodes.values()}
             bond_orders = {frozenset(bond_ids): '?' for bond_ids in graph.edges()}
         else:
 
@@ -441,6 +443,7 @@ class _2DChemicalObj:
             graph = self._graph
             print(self.atoms)
             formal_charges = self.formal_charges
+            chirality = self.chirality
             bond_orders = self.bond_orders
 
         # create colour map of element colours
@@ -507,13 +510,21 @@ class _2DChemicalObj:
             nx.draw_networkx_labels(graph, offset_pos, formal_charges,
                                     font_color='red', font_size=charge_font_sz)
 
+        # draw chiral centers
+        if draw_chiral:
+            nx.draw_networkx_labels(graph,
+                                    offset_pos,
+                                    chirality,
+                                    font_color='blue',
+                                    font_size=charge_font_sz)
+
         # draw bond orders
         nx.draw_networkx_edge_labels(graph,
                                      pos,
                                      bond_orders,
                                      font_size=edge_font_sz,
-                                     verticalalignment="bottom",
-                                     bbox=dict(alpha=0))
+                                     verticalalignment="center",
+                                     )#bbox=dict(alpha=0))
 
         # if backbone_only:
         #     plt.margins(x=0.2, y=0.2)

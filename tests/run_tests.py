@@ -263,11 +263,11 @@ class ChemObjectTests(unittest.TestCase):
         offsets = (0.8, 0.4)
 
         # display plots
-        mol.draw_graph(font_sizes=font_sizes,
+        mol.draw_graph(font_sizes=None,
                        save_fp=f"tests/imgs/{mol_name}.png",
                        show=False,
                        node_label_mode='element',
-                       node_size=140,  # TODO: we need to make this relative to the size of the graph
+                       node_size=300,  # TODO: we need to make this relative to the size of the graph
                        draw_marked_atoms=True)
 
         # TODO: fix offsets of node labels, and node sizes etc.
