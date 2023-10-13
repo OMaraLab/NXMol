@@ -47,7 +47,6 @@ class Molecule2D(_2DChemicalObj):
 
         # RMSD fit
 
-    #
     # def index_map(self, index_target: str, index_input: str, index_input_value: str):
     #     # assumption that all atoms have the same index template
     #     temp_key = list(self._graph._node.keys())[0]
@@ -175,10 +174,12 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
         # write atoms
         print_to_io('@<TRIPOS>ATOM')
+        n_id = 1
+        name_id_map = {}
         for atom in self.atom_objects:
             print_to_io(
                 '{index} {name} {coordinates} {sybyl_atom_type} {subst_id} {subst_name} {charge}'.format(
-                    index=atom.get_index('nid'),
+                    index=n_id,
                     name=atom.get_index('name'),
                     coordinates=' '.join(map(lambda x: '{0:.3f}'.format(float(x)), atom.coordinates)),
                     sybyl_atom_type=sybyl_atom_type(atom.element, atom.valence),
@@ -187,6 +188,9 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
                     charge=self.formal_charges[atom.get_index()],
                 ),
             )
+            name_id_map[atom.get_index('name')] = n_id
+            n_id += 1
+
 
         # write bonds
         print_to_io('@<TRIPOS>BOND')
@@ -194,11 +198,76 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             print_to_io(
                 '{0} {1} {2} {3}'.format(
                     bond_id,
-                    self.get_atom(bond[0]).get_index('nid'),
-                    self.get_atom(bond[1]).get_index('nid'),
+                    name_id_map[self.get_atom(bond[0]).get_index('name')],
+                    name_id_map[self.get_atom(bond[1]).get_index('name')],
                     'ar' if use_ar_bonds and (bond in self.aromatic_bonds) else self.bond_orders[frozenset(bond)],
                 ),
             )
+
+        return io.getvalue()
+
+    def molStr(self, use_ar_bonds: bool = True, use_bond_stereo: bool = True) -> str:
+        """
+        Outputs molecule as mol or sdf string.
+        """
+
+        io = StringIO()
+
+        def print_to_io(*args):
+            print(*args, file=io)
+
+        # write header
+        print_to_io(self.name)
+        print_to_io("  atbmol_generated\n")
+        print_to_io(
+            '{num_atoms: >3}{num_bonds: >3}  0  0  0  0            999 V2000'.format(
+                num_atoms=len(self.atoms),
+                num_bonds=len(self.bonds)
+            ),
+        )
+
+        # dictionary for mol formatting of charges conversion
+        mol_charge_dict = {-3: 7, -2: 6, -1: 5, 0: 0, 1: 3, 2: 2, 3: 1}
+
+        # write atoms
+        n_id = 1
+        name_id_map = {}
+        for atom in self.atom_objects:
+            # TODO: fix the format specifier for coordinates
+            print_to_io(
+                '{coordinates} {element: <3} 0  {charge}  0  0  0  0  0  0  0  0  0  0'.format(
+                    coordinates=''.join(map(lambda x: '{coord:>10}'.format(coord=f"{float(x):.4f}"), atom.coordinates)),
+                    element=atom.element,
+                    charge=mol_charge_dict[self.formal_charges[atom.get_index()]],
+                ),
+            )
+            name_id_map[atom.get_index('name')] = n_id
+            n_id += 1
+
+        # write bonds
+        for (bond_id, bond) in enumerate(self.bonds, start=1):
+            print_to_io(
+                '  {0}  {1}  {2}  {3}  0  0  0'.format(
+                    name_id_map[self.get_atom(bond[0]).get_index('name')],
+                    name_id_map[self.get_atom(bond[1]).get_index('name')],
+                    '4' if use_ar_bonds and (bond in self.aromatic_bonds) else self.bond_orders[frozenset(bond)],
+                    0  # TODO: implement cis / trans stereo info in each bond
+                ),
+            )
+
+        # write charge info
+        charge_str = "".join([f"{name_id_map[atom.get_index('name')]:>4}{atom.formal_charge:>4}"
+                              for atom in self.atom_objects if atom.formal_charge != 0])
+        num_charges = len([charge for charge in self.formal_charges.values() if charge != 0])
+        if num_charges >= 8:
+            # TODO: implement this
+            print("We need to write the code to split over multiple lines the charges, but for now should do.")
+            raise NotImplementedError
+        print_to_io(f"M  CHG  {num_charges}{charge_str}")
+
+        # terminate
+        print_to_io("M  END")
+        print_to_io("$$$$")
 
         return io.getvalue()
 
@@ -208,7 +277,7 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
         TODO: make this override the _2DChemicalObj method (for saving in graph formats for e.g.)
 
         :param fpath: the file path to save the mol object to
-        :param format: the output format one of ['pdb', 'mol2']
+        :param format: the output format one of ['pdb', 'mol2', 'mol', 'sdf']
         """
 
         # get output string in right format
@@ -216,8 +285,12 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
             out_str = self.pdbStr()
         elif format == 'mol2':
             out_str = self.mol2Str()
+        elif format == 'mol':
+            out_str = self.molStr()
+        elif format == 'sdf':
+            out_str = self.molStr()
         else:
-            raise AssertionError("format must be one of: 'pdb' or 'mol2'")
+            raise AssertionError("format must be one of: 'pdb', 'mol2', 'mol' or 'sdf'")
 
         print(f'Writing {fpath}...')
 
