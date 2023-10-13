@@ -157,7 +157,8 @@ def pdb_to_Molecule3D(pdb_str: str,
     molecule = Molecule3D(
         atoms,
         bonds,
-        name=mol_name
+        name=mol_name,
+        net_charge=net_charge
     )
 
 
