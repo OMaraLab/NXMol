@@ -207,8 +207,7 @@ def _GAMESS_parser(GAMESS_log: str, units: str = 'Bohr', id_map=None):
         mapping = lambda x: x
 
     ATOM_BLOCK_HEADING = r" {6}\*{5} EQUILIBRIUM GEOMETRY LOCATED \*{5}\n COORDINATES OF ALL ATOMS ARE \(ANGS\)\n   ATOM   CHARGE {7}X {14}Y {14}Z\n -{60}\n"
-    # NEXT_BLOCK_HEADING = r"          INTERNUCLEAR DISTANCES \(ANGS\.\)\n          ------------------------------"
-    NEXT_BLOCK_HEADING = r" {10}INTERNUCLEAR DISTANCES \(ANGS\.\)\n {10}-{30}"
+    NEXT_BLOCK_HEADING = r"\n\n"  # search for the first empty line after the coordinates block
     # units are in angstroms
     # todo need to check if there is some method for tracking this
     compile_str = f"(?<={ATOM_BLOCK_HEADING})[\\s\\S]+?(?={NEXT_BLOCK_HEADING})"
