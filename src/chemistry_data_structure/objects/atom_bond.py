@@ -29,7 +29,7 @@ class _Atom(dict):
         :param index: A dictionary of different unique index types for the atom, structure of ID_TYPE: VALUE
         :param kwargs:
         """
-        # TODO: Possibly rework the atom class to replace the atom dict factory for more consistency
+        # TODO: add all dictionary methods to _Atom class
         if index is None:
             index = {}
         self.element = element
@@ -154,8 +154,10 @@ class _Atom(dict):
         return self.attributes.__contains__(item)
 
     def items(self):
-        print(self.__dict__.items())
-        return self.__dict__.items()
+        # TODO: test this!
+        str_format_dict = {key: value if value is not None else 'None' for key, value in self.__dict__.items()}
+        print(str_format_dict.items())
+        return str_format_dict.items()
 
     # def __copy__(self):
     #     cls = self.__class__
@@ -260,7 +262,7 @@ class RDKitAtom(_Atom):
         return
 
 
-class _Bond:
+class _Bond(dict):
 
     def __init__(self,
                  atoms: set,
@@ -268,14 +270,14 @@ class _Bond:
 
         # assign atoms
         assert atoms is not None, "Bond atoms cannot be none..."
-        self._atoms = atoms
+        self.atoms = atoms
 
         # properties
         self.order: int = None
         self.is_aromatic: bool = None
 
-        # general attributes dictionary TODO: either use this or remove... consult with Callum
-        self._attributes = {}
+        # general attributes dictionary
+        self.attributes = {}
 
         if 'order' in kwargs:
             self.order = kwargs['order']
@@ -283,7 +285,7 @@ class _Bond:
     def __getitem__(self, item):
         # TODO: Might just make this class a subclass of dictionary
         # Will probably need to set up this for networkx to properly interface
-        return self._attributes.__getitem__(item)
+        return self.attributes.__getitem__(item)
 
     def __setitem__(self, key, value):
         # might need to set this up given the way networkx interfaces
@@ -291,7 +293,23 @@ class _Bond:
         self.__dict__[key] = value
 
     def __contains__(self, item):
-        return self._attributes.__contains__(item)
+        return self.attributes.__contains__(item)
+
+    def items(self):
+
+        # format dictionary to stringify None and to replace sets with lists
+        str_format_dict = {}
+        for key, value in self.__dict__.items():
+
+            if value is None:
+                str_format_dict[key] = 'None'
+            elif isinstance(value, set):
+                str_format_dict[key] = list(value)
+            else:
+                str_format_dict[key] = value
+
+        print(str_format_dict.items())
+        return str_format_dict.items()
 
     def copy(self):
         return self.__dict__.copy()
@@ -308,7 +326,7 @@ class _Bond:
             self.__setitem__(k, v)
 
     def get(self, *args, **kwargs):
-        return self._attributes.get(*args, **kwargs)
+        return self.attributes.get(*args, **kwargs)
 
     def get_order(self) -> int:
         return self.order
@@ -322,7 +340,7 @@ class _Bond:
         print(f"Order was set from {tmp} to {self.order}")
 
     def get_atoms(self):
-        return self._atoms
+        return self.atoms
 
 
 class Bond2D(_Bond):

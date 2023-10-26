@@ -368,25 +368,57 @@ def GAMESS_pdb_to_Molecule3D(
                       )
 
 
-def gml_to_Molecule(fpath: str):
+def gml_to_Molecule3D(fpath: str):
     """
     Read a molecule from a GML file.
-    TODO: this!!!
+    TODO: make a 2D version of this, or the option to read a 2D molecule only.
     :param fpath:
     :return:
     """
 
-    graph = nx.read_gml(fpath)
+    # read graph from gml file
+    mol_graph = nx.read_gml(fpath)
+    atoms = mol_graph.nodes
+    net_charge = mol_graph.graph['net_charge']
 
-    # Molecule3D(atoms=list(atoms.values()),
-    #            bonds=bonds,
-    #            esp_grid_coords=esp_grid_coords,
-    #            esp_grid_charge=esp_grid_charges,
-    #            net_charge=net_charge
-    #            )
+    print('Graph Attributes Dictionary: ', mol_graph.graph)
+    print("Graph atoms: ", mol_graph.nodes)
+    print("Graph bonds: ", mol_graph.edges)
+    atoms = []
+    for node_dict in mol_graph.nodes.values():
 
-    print("Graph: ", graph)
-    return
+        atom = Atom3D(node_dict['index']['name'], node_dict['element'], node_dict['coordinates'])
+        atom.__dict__.update(node_dict)
+        atoms.append(atom)
+
+    print("Parsed Atoms: ", atoms)
+    for atom in atoms:
+        print(atom)
+
+    bonds = []
+    for edge_dict in mol_graph.edges.values():
+
+        print(edge_dict)
+        # make bond object and update attributes dictionary
+        bond = Bond3D(set(edge_dict['atoms']))
+
+        # fix set formatting of bond
+        edge_dict['atoms'] = set(edge_dict['atoms'])
+        bond.__dict__.update(edge_dict)
+        bonds.append(bond)
+
+    # TODO: HERE!!! FIX THIS!!!!
+
+    print("Parsed Bonds: ", bonds)
+    for bond in bonds:
+        print(bond)
+
+    return Molecule3D(atoms=atoms,
+                      bonds=bonds,
+                      net_charge=net_charge,
+                      name=fpath.split('.')[0]
+               )
+
 
 
 class BlockException(Exception):

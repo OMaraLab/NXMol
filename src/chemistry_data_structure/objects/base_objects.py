@@ -47,6 +47,12 @@ class _2DChemicalObj:
         # init graph
         self._name = name
         self._graph = nx.Graph()
+
+        # get graph attributes dict and assign net charge
+        self._mol_attr = self._graph.graph
+        self._mol_attr['net_charge'] = self._net_charge
+
+        # add atoms and bonds to graph
         if atoms is not None:
             self._graph.add_nodes_from([a.name for a in atoms])
             for a in atoms:
