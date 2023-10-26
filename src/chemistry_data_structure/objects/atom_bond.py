@@ -15,7 +15,7 @@ class AtomIndexType(Exception):
     pass
 
 
-class _Atom:
+class _Atom(dict):
     def __init__(self,
                  name: str,
                  element: str,
@@ -35,9 +35,9 @@ class _Atom:
         self.element = element
         # may or may not check element types
 
-        self._index = index
-        self._index['name'] = name
-        self._attributes = {}
+        self.index = index
+        self.index['name'] = name
+        self.attributes = {}
 
         self.full_valence = None
         self.valence = None
@@ -82,16 +82,16 @@ class _Atom:
                         'nid': numerical id, assigned when parsed from a pdb
         :return:
         """
-        if id_type in set(self._index.keys()):
-            return self._index[id_type]
+        if id_type in set(self.index.keys()):
+            return self.index[id_type]
         else:
             raise AtomIndexError(f'Id type {id_type} not associated with this atom')
 
     def set_index(self, id_type: str, value: Any, overwrite: bool = False):
         if not overwrite:
-            if id_type in self._index:
+            if id_type in self.index:
                 raise AtomIndexError(f'Index {id_type} already exists! specify overwrite=True to overwrite')
-        self._index[id_type] = value
+        self.index[id_type] = value
 
     @property
     def name(self):
@@ -99,7 +99,7 @@ class _Atom:
         method for retrieving the atom name
         :return:
         """
-        return self._index['name']
+        return self.index['name']
 
     # @name.setter
     # def name(self, value):
@@ -128,7 +128,7 @@ class _Atom:
         # TODO: Might just make this class a subclass of dictionary
         # Will prbably need to set up this for networkx to properly interface
         # TODO raise warning if overlap between index and dictionary
-        return {**self._attributes, **self._index}.__getitem__(item)
+        return {**self.attributes, **self.index}.__getitem__(item)
 
     def __setitem__(self, key, value):
         """
@@ -151,7 +151,11 @@ class _Atom:
         :param value:
         :return:
         """
-        return self._attributes.__contains__(item)
+        return self.attributes.__contains__(item)
+
+    def items(self):
+        print(self.__dict__.items())
+        return self.__dict__.items()
 
     # def __copy__(self):
     #     cls = self.__class__
