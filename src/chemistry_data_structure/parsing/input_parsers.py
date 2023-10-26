@@ -6,6 +6,7 @@ from functools import reduce
 import re
 from io import StringIO
 
+import networkx as nx
 import numpy as np
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
@@ -365,6 +366,27 @@ def GAMESS_pdb_to_Molecule3D(
                       esp_grid_charge=esp_grid_charges,
                       net_charge=net_charge
                       )
+
+
+def gml_to_Molecule(fpath: str):
+    """
+    Read a molecule from a GML file.
+    TODO: this!!!
+    :param fpath:
+    :return:
+    """
+
+    graph = nx.read_gml(fpath)
+
+    # Molecule3D(atoms=list(atoms.values()),
+    #            bonds=bonds,
+    #            esp_grid_coords=esp_grid_coords,
+    #            esp_grid_charge=esp_grid_charges,
+    #            net_charge=net_charge
+    #            )
+
+    print("Graph: ", graph)
+    return
 
 
 class BlockException(Exception):

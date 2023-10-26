@@ -219,7 +219,7 @@ class _2DChemicalObj:
         nx.relabel_nodes(self._graph,
                          {atom.name: name},
                          copy=False)
-        atom._index['name'] = name
+        atom.index['name'] = name
 
     def add_bond(self, a1: str, a2: str, bond: _Bond) -> None:
         """
@@ -251,7 +251,7 @@ class _2DChemicalObj:
         else:
             # account for alternate indexing system
             for a_id, a in self.atoms.items():
-                if a._index[index_type] == index:
+                if a.index[index_type] == index:
                     self._graph.remove_node(a_id)
 
     def remove_atoms(self, indices: set, index_type='name') -> None:
@@ -267,7 +267,7 @@ class _2DChemicalObj:
         if index_type == 'name':
             return self._graph.nodes[index]
         else:
-            match_list = [a for a in self._graph._node.values() if a._index[index_type] == index]
+            match_list = [a for a in self._graph._node.values() if a.index[index_type] == index]
             return match_list[0] if len(match_list) > 0 else None
             # return next((d for d in self._graph._node.values() if d[index_type] == index), None)
 
@@ -281,7 +281,7 @@ class _2DChemicalObj:
         if index_type == 'name':
             return [self._graph.nodes[i] for i in index]
         else:
-            return [[a for a in self._graph._node.values() if a._index[index_type]==i][0] for i in index]
+            return [[a for a in self._graph._node.values() if a.index[index_type] == i][0] for i in index]
             # return [next((d for d in self._graph._node.values() if d[index_type] == i), None)
             #         for i in index]
 
@@ -374,6 +374,27 @@ class _2DChemicalObj:
         """
         heavy_atoms = set(a.name for a in self.atoms.values() if a.element != 'H')
         return self.graph.subgraph(heavy_atoms)
+
+    def get_neighbour_element_counts(self, element: str):
+        """
+        Returns a dictionary of {atom:count} where count is the number of neighbouring
+        atoms of the given element.
+        :param element: the element to count neighbours for
+        :return: dict of {atom_id : count}
+        """
+        counts = {}
+        for atom_id in self.atoms:
+            counts[atom_id] = len([n_id for n_id in self.graph.neighbors(atom_id)
+                                   if self.get_atom(n_id).element == element])
+        return counts
+
+    def get_element_count(self, elements: Set[str]) -> int:
+        """
+        Returns the number of atoms of a certain set of elements.
+        :param elements: set of elements to count
+        :return: int count
+        """
+        return len([a for a in self.atoms if self.get_atom(a).element in elements])
 
     def draw_graph(self,
                    fixed_heavy_atoms: dict = None,
@@ -550,27 +571,6 @@ class _2DChemicalObj:
             return adj
         else:
             return adj.tolist()
-
-    def get_neighbour_element_counts(self, element: str):
-        """
-        Returns a dictionary of {atom:count} where count is the number of neighbouring
-        atoms of the given element.
-        :param element: the element to count neighbours for
-        :return: dict of {atom_id : count}
-        """
-        counts = {}
-        for atom_id in self.atoms:
-            counts[atom_id] = len([n_id for n_id in self.graph.neighbors(atom_id)
-                                   if self.get_atom(n_id).element == element])
-        return counts
-
-    def get_element_count(self, elements: Set[str]) -> int:
-        """
-        Returns the number of atoms of a certain set of elements.
-        :param elements: set of elements to count
-        :return: int count
-        """
-        return len([a for a in self.atoms if self.get_atom(a).element in elements])
 
     def set_atom_attributes(self, attrs: dict):
         """
@@ -1008,6 +1008,15 @@ class _2DChemicalObj:
 
     def get_fragment(self, index: str):
         return self._fragments.get(index)
+
+    def write_gml(self, fpath: str):
+        """
+        Save molecular graph as GML file.
+        :param fpath: the file path to save the molecular graph to.
+        """
+
+        # TODO: work in progress, need Atom dictionaries to be fixed for this to work
+        nx.write_gml(self.graph, fpath)
 
 
 class _3DChemicalObj(_2DChemicalObj):

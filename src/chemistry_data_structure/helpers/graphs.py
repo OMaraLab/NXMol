@@ -1,4 +1,4 @@
-from typing import List, Tuple, Callable, Sequence
+from typing import List, Tuple, Callable, Sequence, Set
 
 from networkx import Graph
 from networkx.algorithms import is_isomorphic
@@ -67,7 +67,7 @@ def unique_molecules(molecules: List[_2DChemicalObj], debug: bool = False) -> Li
             not are_graphs_isomorphic(
                 (graph_1, graph_2),
                 node_match=are_atoms_equivalent,
-                edge_match=are_edges_equivalent,
+                #edge_match=are_edges_equivalent,
             )
             for (_, graph_2) in unique_molecules
         ):
@@ -82,3 +82,22 @@ def unique_molecules(molecules: List[_2DChemicalObj], debug: bool = False) -> Li
         molecule
         for (molecule, _) in unique_molecules
     ]
+
+
+def get_molecule_matches(ref_mols: Set[_2DChemicalObj], test_mols: Set[_2DChemicalObj]) -> dict:
+    """
+    Returns a dictionary of matches between test set of mol objects and a reference set of mol objects
+    by graph isomorphism.
+    :param ref_mols: the list of reference mol objects to match against
+    :param test_mols: the list of test mol objects to be matched
+    :return: match dictionary: dict[test_mol --> ref_mol]
+    """
+
+    # dictionary of matches {test_mol --> ref_mol...}
+    matches = {}
+    for ref_mol in ref_mols:
+        for test_mol in test_mols:
+            if are_graphs_isomorphic((ref_mol.graph, test_mol.graph), node_match=are_atoms_equivalent):
+                matches[test_mol] = ref_mol
+
+    return matches

@@ -10,6 +10,7 @@ from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D, GAMESS_to_Molecule3D
 from chemistry_data_structure.tools import gen_tautomer_trans_structure_2D, get_start_and_end_structures
+from chemistry_data_structure.parsing.input_parsers import gml_to_Molecule
 
 
 class TransitionStructureTest(unittest.TestCase):
@@ -150,6 +151,25 @@ class JmolStereoTests(unittest.TestCase):
 class ParserTest(unittest.TestCase):
 
     def test_pdb_parsing(self):
+        # TODO: this
+        self.assertEqual(True, False)
+
+    def test_gml_parsing(self):
+
+        # open test molecule from pdb first
+        mol_name = 'hydroxyurea'
+        fname = f"tests/data/pdb/hydroxyurea.pdb"
+        with open(fname, 'r') as pdb_file:
+            pdb_str = pdb_file.read()
+        mol = pdb_to_Molecule3D(pdb_str, mol_name=mol_name, net_charge=0, assign_bond_orders_and_charges=True)
+
+        # save molecule to gml format
+        mol.write_gml(f'tests/out/gml/hydroxyurea.gml')
+
+        # load molecule from gml format
+        mol = gml_to_Molecule(f'tests/out/gml/hydroxyurea.gml')
+
+        # test loaded mol and original mol are the same
         self.assertEqual(True, False)
 
 
