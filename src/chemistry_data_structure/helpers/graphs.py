@@ -12,6 +12,8 @@ def lewis_graph(molecule: _2DChemicalObj, use_non_bonded_electrons: bool = True)
     Return the Lewis graph of a molecule (Using networkx' Graph() class).
     TODO: this will eventually be replaced once we have properly integrated the atom
         object into networkx.
+
+        THIS HAS BEEN MADE REDUNDANT!
     '''
     G = Graph()
 
@@ -31,26 +33,30 @@ def lewis_graph(molecule: _2DChemicalObj, use_non_bonded_electrons: bool = True)
 def are_atoms_equivalent(node_1: _Atom, node_2: _Atom) -> bool:
     return node_1['element'] == node_2['element'] #and node_1['non_bonded_electrons'] == node_2['non_bonded_electrons']
 
+def are_atoms_and_formal_charges_equivalent(node_1: _Atom, node_2: _Atom) -> bool:
+    return node_1['element'] == node_2['element'] and node_1['formal_charge'] == node_2['formal_charge']
 
-def are_edges_equivalent(edge_1: _Bond, edge_2: _Bond) -> bool:
+def are_bonds_equivalent(edge_1: _Bond, edge_2: _Bond) -> bool:
     return edge_1['order'] == edge_2['order']
 
 
 def are_graphs_isomorphic(
     graphs: Sequence[Graph],
     node_match: Callable[['Node', 'Node'], bool] = are_atoms_equivalent,
-    edge_match: Callable[['Edge', 'Edge'], bool] = are_edges_equivalent,
+    edge_match: Callable[['Edge', 'Edge'], bool] = None  # by default do nothing
 ) -> bool:
     return is_isomorphic(
         *graphs,
         node_match=node_match,
-        #edge_match=edge_match,
+        edge_match=edge_match,
     )
 
 
 def unique_molecules(molecules: List[_2DChemicalObj], debug: bool = False) -> List[_2DChemicalObj]:
     '''
-    Return list of one-by-one non-isomorphic graphs (including bond order, chemical elements and number of lone pairs)
+    Return list of one-by-one non-isomorphic graphs (based only on atom elements and connectivity)
+
+    TODO: make this able to have modifiable uniqueness callables (i.e. from functions above)
     '''
     lewis_graphs = [
         lewis_graph(molecule)
@@ -67,7 +73,6 @@ def unique_molecules(molecules: List[_2DChemicalObj], debug: bool = False) -> Li
             not are_graphs_isomorphic(
                 (graph_1, graph_2),
                 node_match=are_atoms_equivalent,
-                #edge_match=are_edges_equivalent,
             )
             for (_, graph_2) in unique_molecules
         ):

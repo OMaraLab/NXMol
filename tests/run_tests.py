@@ -1,14 +1,11 @@
 import unittest
-
-import networkx as nx
-import pickle as pk
-# import sys
-# sys.path.append('../src/chemistry_data_structure/')
 import numpy as np
+from chemistry_data_structure.helpers.graphs import are_graphs_isomorphic, are_atoms_and_formal_charges_equivalent, are_bonds_equivalent
 from chemistry_data_structure.helpers.vector_calculations import place_h_using_ilp
 from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
 from chemistry_data_structure.objects.molecular_entity import Molecule3D
-from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D, GAMESS_to_Molecule3D, gml_to_Molecule3D
+from chemistry_data_structure.parsing.input_parsers import pdb_to_Molecule3D, GAMESS_to_Molecule3D, gml_to_Molecule3D, \
+    mol_to_Molecule3D
 from chemistry_data_structure.tools import gen_tautomer_trans_structure_2D, get_start_and_end_structures
 
 
@@ -166,10 +163,35 @@ class ParserTest(unittest.TestCase):
         mol.write_gml(f'tests/out/gml/hydroxyurea.gml')
 
         # load molecule from gml format
-        gml_to_Molecule3D(f'tests/out/gml/hydroxyurea.gml')
+        read_mol = gml_to_Molecule3D(f'tests/out/gml/hydroxyurea.gml')
 
-        # test loaded mol and original mol are the same
-        self.assertEqual(True, False)
+        # test loaded mol and original mol are the same in graph structure
+        self.assertTrue(are_graphs_isomorphic([mol.graph, read_mol.graph], are_atoms_and_formal_charges_equivalent, are_bonds_equivalent))
+
+    def test_mol_parsing(self):
+
+        # open test molecule from pdb first
+        mol_name = 'hydroxyurea_protonation_0_tautomer_0'
+        fname = f"tests/data/mol/{mol_name}.mol"
+        with open(fname, 'r') as mol_file:
+            mol_str = mol_file.read()
+
+        # load molecule from mol format
+        mol = mol_to_Molecule3D(mol_str)
+
+        # save mol to mol format
+        out_fpath = f"tests/out/mol/{mol_name}.mol"
+        mol.saveMolToFile(out_fpath, 'mol')
+
+        # re-load mol from mol format
+        with open(out_fpath, 'r') as mol_file_2:
+            mol_str_2 = mol_file_2.read()
+        mol_reload = mol_to_Molecule3D(mol_str_2)
+
+        # test loaded mol and original mol are the same in graph structure
+        self.assertTrue(are_graphs_isomorphic([mol.graph, mol_reload.graph],
+                                              are_atoms_and_formal_charges_equivalent,
+                                              are_bonds_equivalent))
 
 
 class NetworkxTests(unittest.TestCase):

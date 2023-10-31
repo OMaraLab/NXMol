@@ -1017,12 +1017,10 @@ class _2DChemicalObj:
 
     def write_gml(self, fpath: str):
         """
-        Save molecular graph as GML file.
+        Save molecule as GML file.
         :param fpath: the file path to save the molecular graph to.
         """
-
-        # TODO: work in progress, need Atom dictionaries to be fixed for this to work
-        nx.write_gml(self.graph, fpath)
+        nx.write_gml(self.graph, fpath, stringizer=nx.readwrite.gml.literal_stringizer)
 
 
 class _3DChemicalObj(_2DChemicalObj):

@@ -118,17 +118,7 @@ class _Atom(dict):
         return f'{self.__class__.__name__}("{self.name}", "{self.element}")'
 
     def __getitem__(self, item):
-        """
-        Pass thorough dictionary methods to the attributes dictionary to maintain compatibility with networkx
-        Networkx requires dict of dict of dict structure
-        merges index and attributes for plotting
-        :param item:
-        :return:
-        """
-        # TODO: Might just make this class a subclass of dictionary
-        # Will prbably need to set up this for networkx to properly interface
-        # TODO raise warning if overlap between index and dictionary
-        return {**self.attributes, **self.index}.__getitem__(item)
+        return self.__dict__[item]
 
     def __setitem__(self, key, value):
         """
@@ -154,10 +144,7 @@ class _Atom(dict):
         return self.attributes.__contains__(item)
 
     def items(self):
-        # TODO: test this!
-        str_format_dict = {key: value if value is not None else 'None' for key, value in self.__dict__.items()}
-        print(str_format_dict.items())
-        return str_format_dict.items()
+        return self.__dict__.items()
 
     # def __copy__(self):
     #     cls = self.__class__
@@ -212,7 +199,7 @@ class Atom3D(_Atom):
                f"Valence: {self.valence}, Formal Charge: {self.formal_charge}, Valence Electrons: {self.valence_electrons}," \
                f"Non Bonded Electrons: {self.non_bonded_electrons}, Hybridisation: {self.hybridisation}," \
                f"Is Aromatic: {self.is_aromatic}, Is Conjugated: {self.is_conjugated}, Radical Electrons: {self.radical_electrons}," \
-               f"Chirality: {self.chirality})"
+               f"Chirality: {self.chirality}, Index: {self.index})"
 
     def set_coordinates(self, coordinates):
         """
@@ -282,34 +269,38 @@ class _Bond(dict):
         if 'order' in kwargs:
             self.order = kwargs['order']
 
-    def __getitem__(self, item):
-        # TODO: Might just make this class a subclass of dictionary
-        # Will probably need to set up this for networkx to properly interface
-        return self.attributes.__getitem__(item)
+    def get_order(self) -> int:
+        return self.order
 
-    def __setitem__(self, key, value):
-        # might need to set this up given the way networkx interfaces
-        #self._attributes.__setitem__(key, value)
-        self.__dict__[key] = value
+    def get_atoms(self):
+        return self.atoms
 
-    def __contains__(self, item):
-        return self.attributes.__contains__(item)
+    def get_atoms_list(self):
+        return list(self.atoms)
+
+    def set_order(self, order: int):
+        tmp = self.order
+        self.order = order
+        print(f"Order was set from {tmp} to {self.order}")
+
+    def get(self, *args, **kwargs):
+        return self.attributes.get(*args, **kwargs)
 
     def items(self):
 
         # format dictionary to stringify None and to replace sets with lists
-        str_format_dict = {}
-        for key, value in self.__dict__.items():
+        # str_format_dict = {}
+        # for key, value in self.__dict__.items():
+        #
+        #     if value is None:
+        #         str_format_dict[key] = 'None'
+        #     elif isinstance(value, set):
+        #         str_format_dict[key] = list(value)
+        #     else:
+        #         str_format_dict[key] = value
 
-            if value is None:
-                str_format_dict[key] = 'None'
-            elif isinstance(value, set):
-                str_format_dict[key] = list(value)
-            else:
-                str_format_dict[key] = value
-
-        print(str_format_dict.items())
-        return str_format_dict.items()
+        #print(str_format_dict.items())
+        return self.__dict__.items()#str_format_dict.items()
 
     def copy(self):
         return self.__dict__.copy()
@@ -325,22 +316,16 @@ class _Bond(dict):
         for k, v in kwargs.items():
             self.__setitem__(k, v)
 
-    def get(self, *args, **kwargs):
-        return self.attributes.get(*args, **kwargs)
+    def __getitem__(self, item):
+        return self.__dict__[item]
 
-    def get_order(self) -> int:
-        return self.order
+    def __setitem__(self, key, value):
+        # might need to set this up given the way networkx interfaces
+        #self._attributes.__setitem__(key, value)
+        self.__dict__[key] = value
 
-    def set_order(self, order: int):
-        # TODO: I don't know if this is what we have in mind, i.e. getters/setters
-        #   or if we want to use a more general method, but i'm writing this for use in the
-        #   short term
-        tmp = self.order
-        self.order = order
-        print(f"Order was set from {tmp} to {self.order}")
-
-    def get_atoms(self):
-        return self.atoms
+    def __contains__(self, item):
+        return self.attributes.__contains__(item)
 
 
 class Bond2D(_Bond):
@@ -350,11 +335,17 @@ class Bond2D(_Bond):
                  **kwargs):
         super().__init__(atoms, **kwargs)
 
+    def __str__(self):
+        return f"Bond2D({self.get_atoms_list()[0]}-{self.get_atoms_list()[1]} with Order {self.get_order()})"
+
 
 class Bond3D(_Bond):
 
     def __init__(self, atoms: set, **kwargs):
         super().__init__(atoms, **kwargs)
+
+    def __str__(self):
+        return f"Bond3D({self.get_atoms_list()[0]}-{self.get_atoms_list()[1]} with Order {self.get_order()})"
 
 
 class RDKitBond(_Bond):

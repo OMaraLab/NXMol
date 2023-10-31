@@ -8,13 +8,10 @@ from io import StringIO
 
 import networkx as nx
 import numpy as np
-from chemistry_data_structure.objects.molecular_entity import Molecule3D
-from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
+from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D, Bond2D
+from chemistry_data_structure.objects.molecular_entity import Molecule3D  # TODO: this import has broken??
 from chemistry_data_structure.parsing.pdb import bonds_for_pdb_line, is_pdb_connect_line, pdb_atoms_in
 from chemistry_data_structure.helpers.chem import BOHR_PER_ANG, BOHR_PER_NM, FULL_VALENCES, VALENCE_ELECTRONS
-
-
-############# mol2 Parser
 
 
 def _atom_for_atom_line(line: str):
@@ -28,7 +25,6 @@ def _atom_for_atom_line(line: str):
             element=element,
             valence=None,
             coordinates=(float(x), float(y), float(z))
-            # capped=True,
         ),
         float(partial_charge),
     )
@@ -367,22 +363,107 @@ def GAMESS_pdb_to_Molecule3D(
                       )
 
 
+def mol_to_Molecule3D(mol_str: str):
+    """
+    Read a molecule from a mol file, does not read in auxiliary information (TODO: in the future add metadata)
+    :param mol_str: the mol file str.
+    :return: Molecule3D object.
+    """
+
+    mol_str_lines = mol_str.split('\n')
+
+    # read header
+    mol_name = mol_str_lines[0]
+
+    # read overall mol info
+    mol_info = re.findall('[0-9]+', mol_str_lines[3])
+    num_atoms = int(mol_info[0])
+    num_bonds = int(mol_info[1])
+
+    print("Number of Atoms: ", num_atoms)
+    print("Number of Bonds: ", num_bonds)
+
+    # dictionary for mol formatting of charges conversion
+    mol_charge_read_dict = {7: -3, 6: -2, 5: -1, 0: 0, 3: 1, 2: 2, 1: 3}
+
+    # constants for mol parsing
+    ATOM_START_LINE = 4
+    atom_end_line = ATOM_START_LINE + num_atoms
+
+    # read atoms
+    n_id = 1
+    id_name_map = {}
+    atoms = []
+    for atom_line in mol_str_lines[ATOM_START_LINE: atom_end_line]:
+
+        print(atom_line)
+        atom_info = re.findall('[-]?[0-9]+\.[0-9]+|[A-Za-z]+|[0-9]+', atom_line)
+
+        x = float(atom_info[0])
+        y = float(atom_info[1])
+        z = float(atom_info[2])
+        element = atom_info[3]
+        formal_charge = mol_charge_read_dict[int(atom_info[5])]
+        atom_name = element + str(n_id)
+        print(f"Name: {atom_name}, X: {x}, Y: {y}, Z: {z}, Element: {element}, Formal Charge: {formal_charge}")
+
+        atom = Atom3D(
+            name=atom_name,
+            element=element,
+            coordinates=[float(c) for c in [x, y, z]],
+            index={'name': atom_name, 'nid': n_id},
+            formal_charge=formal_charge,
+        )
+        atoms.append(atom)
+
+        id_name_map[n_id] = atom.get_index('name')
+        n_id += 1
+
+    # sum up formal charges to find net charge
+    net_charge = sum([atom.formal_charge for atom in atoms])
+    print('Net Charge: ', net_charge)
+
+    # write bonds
+    bond_start_line = atom_end_line
+    bond_end_line = bond_start_line + num_bonds
+    bonds = []
+    for bond_line in mol_str_lines[bond_start_line: bond_end_line]:
+
+        # get bond info from mol line
+        print(bond_line)
+        bond_info = re.findall('[0-9]+', bond_line)
+        a1_id = int(bond_info[0])
+        a2_id = int(bond_info[1])
+        a1_name = id_name_map[a1_id]
+        a2_name = id_name_map[a2_id]
+        order = int(bond_info[2])
+        print(f"a1: {a1_id}, a2: {a2_id}, a1_name: {a1_name}, a2_name: {a2_name}, order: {order}")
+
+        # create bond object
+        bond = Bond3D(set((a1_name, a2_name)), order=order)
+        bonds.append((a1_name, a2_name, bond))
+
+    return Molecule3D(
+        atoms,
+        bonds,
+        name=mol_name,
+        net_charge=net_charge
+    )
+
+
 def gml_to_Molecule3D(fpath: str):
     """
     Read a molecule from a GML file.
     TODO: make a 2D version of this, or the option to read a 2D molecule only.
-    :param fpath:
-    :return:
+    :param fpath: file path to the mol file.
+    :return: Molecule3D object.
     """
 
     # read graph from gml file
-    mol_graph = nx.read_gml(fpath)
+    mol_graph = nx.read_gml(fpath, destringizer=nx.readwrite.gml.literal_destringizer)
     atoms = mol_graph.nodes
     net_charge = mol_graph.graph['net_charge']
 
-    print('Graph Attributes Dictionary: ', mol_graph.graph)
-    print("Graph atoms: ", mol_graph.nodes)
-    print("Graph bonds: ", mol_graph.edges)
     atoms = []
     for node_dict in mol_graph.nodes.values():
 
@@ -390,30 +471,20 @@ def gml_to_Molecule3D(fpath: str):
         atom.__dict__.update(node_dict)
         atoms.append(atom)
 
-    print("Parsed Atoms: ", atoms)
-    for atom in atoms:
-        print(atom)
-
     bonds = []
     for edge_dict in mol_graph.edges.values():
 
-        print(edge_dict)
-        # make bond object and update attributes dictionary
-        bond = Bond3D(set(edge_dict['atoms']))
-
         # fix set formatting of bond
         edge_dict['atoms'] = set(edge_dict['atoms'])
+
+        # make bond object and update attributes dictionary
+        bond = Bond3D(edge_dict['atoms'])
         bond.__dict__.update(edge_dict)
         bonds.append(bond)
 
-    # TODO: HERE!!! FIX THIS!!!!
-
-    print("Parsed Bonds: ", bonds)
-    for bond in bonds:
-        print(bond)
-
+    bond_list = [(list(bond.get_atoms())[0], list(bond.get_atoms())[1], bond) for bond in bonds]
     return Molecule3D(atoms=atoms,
-                      bonds=bonds,
+                      bonds=bond_list,
                       net_charge=net_charge,
                       name=fpath.split('.')[0]
                )
