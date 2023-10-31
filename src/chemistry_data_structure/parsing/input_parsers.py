@@ -380,9 +380,6 @@ def mol_to_Molecule3D(mol_str: str):
     num_atoms = int(mol_info[0])
     num_bonds = int(mol_info[1])
 
-    print("Number of Atoms: ", num_atoms)
-    print("Number of Bonds: ", num_bonds)
-
     # dictionary for mol formatting of charges conversion
     mol_charge_read_dict = {7: -3, 6: -2, 5: -1, 0: 0, 3: 1, 2: 2, 1: 3}
 
@@ -396,7 +393,6 @@ def mol_to_Molecule3D(mol_str: str):
     atoms = []
     for atom_line in mol_str_lines[ATOM_START_LINE: atom_end_line]:
 
-        print(atom_line)
         atom_info = re.findall('[-]?[0-9]+\.[0-9]+|[A-Za-z]+|[0-9]+', atom_line)
 
         x = float(atom_info[0])
@@ -405,7 +401,6 @@ def mol_to_Molecule3D(mol_str: str):
         element = atom_info[3]
         formal_charge = mol_charge_read_dict[int(atom_info[5])]
         atom_name = element + str(n_id)
-        print(f"Name: {atom_name}, X: {x}, Y: {y}, Z: {z}, Element: {element}, Formal Charge: {formal_charge}")
 
         atom = Atom3D(
             name=atom_name,
@@ -421,7 +416,6 @@ def mol_to_Molecule3D(mol_str: str):
 
     # sum up formal charges to find net charge
     net_charge = sum([atom.formal_charge for atom in atoms])
-    print('Net Charge: ', net_charge)
 
     # write bonds
     bond_start_line = atom_end_line
@@ -430,14 +424,12 @@ def mol_to_Molecule3D(mol_str: str):
     for bond_line in mol_str_lines[bond_start_line: bond_end_line]:
 
         # get bond info from mol line
-        print(bond_line)
         bond_info = re.findall('[0-9]+', bond_line)
         a1_id = int(bond_info[0])
         a2_id = int(bond_info[1])
         a1_name = id_name_map[a1_id]
         a2_name = id_name_map[a2_id]
         order = int(bond_info[2])
-        print(f"a1: {a1_id}, a2: {a2_id}, a1_name: {a1_name}, a2_name: {a2_name}, order: {order}")
 
         # create bond object
         bond = Bond3D(set((a1_name, a2_name)), order=order)
