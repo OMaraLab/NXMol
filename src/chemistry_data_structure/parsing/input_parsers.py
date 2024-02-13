@@ -8,16 +8,14 @@ from io import StringIO
 
 import networkx as nx
 import numpy as np
-import pickle
-from pprint import pprint
+
+
 from chemistry_data_structure.parsing.hessian_analysis import (
     cal_eigen_matrix,
     cal_stretching,
 )
-from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D, Bond2D
-from chemistry_data_structure.objects.molecular_entity import (
-    Molecule3D,
-)  # TODO: this import has broken??
+from chemistry_data_structure.objects.atom_bond import Atom3D, Bond3D
+from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.parsing.pdb import (
     bonds_for_pdb_line,
     is_pdb_connect_line,
@@ -61,39 +59,35 @@ def _bond_for_atom_line(line: str):
     return ([int(atom_id_1), int(atom_id_2)], bond_order)
 
 
-def pickle_to_Molecule3D(molid: str):
+def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_ORDER_THRESHOLD=0.85):
     """
     Parse a pickled QM output file to construct a Molecule3D
     """
-    qm_data = pickle.load(
-        open(f"test_dataset/{molid}/b3lyp_631Gd_PCM_water_hessian.pickle", "rb")
-    )
 
     atoms = [
-        Atom3D(x, x, tuple(y))
-        for x, y in zip(
-            qm_data["type"].values(), qm_data["primary_axis_coords"].values()
-        )
+        Atom3D(f"{i}", element_type, tuple(coords))
+        for (i, element_type), coords in zip(qm_data["type"].items(), qm_data["primary_axis_coords"].values())
     ]
+    # set zero indexed ids that are used in the weave featurisation later
+    for i, atom in enumerate(atoms):
+        atom.set_index("nid", i)
 
-    fc = {}
     umatrix, eigmatrix = cal_eigen_matrix(
         qm_data["primary_axis_coords"], qm_data["hessian"]
     )
 
+    force_constants = {}
+    bonds = []
     for i, j, bond_order in qm_data["bond_order"]:
-        if bond_order > 0.85:
-            fc[frozenset([i, j])] = cal_stretching([i, j], umatrix, eigmatrix)
+        if bond_order > COVALENT_BOND_ORDER_THRESHOLD:
+            force_constants[frozenset([i, j])] = cal_stretching([i, j], umatrix, eigmatrix)
+            atom_names = [str(i), str(j)]
+            bonds.append(atom_names + [Bond3D(set(atom_names), order=bond_order)])
 
-    bonds = [
-        (i, j, fc[frozenset([i, j])])
-        for i, j, bond_order in qm_data["bond_order"]
-        if bond_order > 0.85
-    ]
-
-    troll = Molecule3D(atoms=atoms, bonds=[x for x in bonds], name=molid)
-    print(troll.formal_charges)
-    pass
+    mol3D = Molecule3D(atoms=atoms, bonds=bonds, name=name, net_charge=net_charge)
+    mol3D.assign_bond_orders_and_charges_with_ILP(net_charge)
+    mol3D.assign_hybridisations_and_valences()
+    return mol3D
 
 
 def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
@@ -127,7 +121,7 @@ def mol2_to_Molecule3D(mol2_str: str) -> Molecule3D:
         for a in atoms:
             a1_name = [a.name for (a, _) in atoms if a.get_index("mol2") == mol2_id1][0]
             a2_name = [a.name for (a, _) in atoms if a.get_index("mol2") == mol2_id2][0]
-            bond_objects.append((a1_name, a2_name, Bond3D(set((a1_name, a2_name)))))
+            bond_objects.append([a1_name, a2_name, Bond3D({a1_name, a2_name})])
 
     total_net_charge = sum(partial_charge for (atom, partial_charge) in atoms)
     assert abs(total_net_charge - round(total_net_charge)) <= 0.01, total_net_charge

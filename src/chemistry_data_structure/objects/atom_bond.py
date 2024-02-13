@@ -349,3 +349,4 @@ class Bond3D(_Bond):
 
 
 class RDKitBond(_Bond):
+    pass

@@ -3,7 +3,7 @@ from functools import reduce
 from sys import stderr
 
 import networkx as nx
-from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, FrozenSet, Set
+from typing import List, Union, Optional, TextIO, Tuple, Any, Iterable, Set
 import numpy as np
 from matplotlib import pyplot as plt
 from chemistry_data_structure.helpers.chem import (
@@ -14,8 +14,7 @@ from chemistry_data_structure.helpers.chem import (
 )
 from chemistry_data_structure.helpers.io import write_to_debug
 from chemistry_data_structure.helpers.rings import bonds_for_ring
-from chemistry_data_structure.objects.atom_bond import Atom2D, Atom3D, _Bond, _Atom
-from chemistry_data_structure.objects.atom_bond import Bond2D, Bond3D
+from chemistry_data_structure.objects.atom_bond import Atom2D, _Bond, _Atom
 
 ELEMENT_COLOURS = {
     "H": "#eeeeee",
@@ -43,7 +42,7 @@ class _2DChemicalObj:
     def __init__(
         self,
         atoms: List[_Atom] = None,
-        bonds: List[Union[str, str, _Bond]] = None,
+        bonds: List[List[Union[str, _Bond]]] = None,
         name: str = "",
         net_charge: Optional[int] = None,
     ):
@@ -571,7 +570,7 @@ class _2DChemicalObj:
 
         # draw graph, with node and edge labels
         fig = plt.figure(dpi=600, figsize=(6, 5))
-        nx.draw(
+        nx.draw_networkx(
             graph,
             pos=pos,
             labels=node_labels,

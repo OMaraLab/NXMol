@@ -3,22 +3,26 @@ import numpy as np
 from scipy.spatial import distance_matrix
 from io import StringIO
 from operator import itemgetter
+from typing import List, Union, Optional
+
+from deepchem.feat.base_classes import MolecularFeaturizer
+from deepchem.feat.graph_features import GraphConvConstants, one_of_k_encoding, find_distance
+from deepchem.feat.mol_graphs import WeaveMol
+
 from chemistry_data_structure.helpers.chem import LINEAR, TRIGONAL_PLANAR, \
-    TRIGONAL_PLANAR_BOND_ANGLE, TETRAHEDRAL, TETRAHEDRAL_BOND_ANGLE
-
-try:
-    import gurobipy as gp
-    from gurobipy import GRB
-except ModuleNotFoundError:
-    pass
-
+    TRIGONAL_PLANAR_BOND_ANGLE, TETRAHEDRAL, TETRAHEDRAL_BOND_ANGLE, ELECTRONEGATIVITIES
 from chemistry_data_structure.objects.base_objects import _2DChemicalObj, _3DChemicalObj
-from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, RDKitAtom, RDKitBond
+from chemistry_data_structure.objects.atom_bond import Atom2D, Bond2D, Atom3D, Bond3D, _Bond, _Atom
 from chemistry_data_structure.helpers.vector_calculations import place_first_hydrogen, \
     gromos_tetrahedral_1H, gromos_trigonal_planar_1H, gromos_trigonal_planar_2H, gromos_tetrahedral_from_2_vectors, \
     gromos_tetrahedral_3H, place_h_using_ilp
 from chemistry_data_structure.parsing.sybyl import sybyl_atom_type
-from typing import List, Union
+
+
+try:
+    import gurobipy as gp
+except ModuleNotFoundError:
+    pass
 
 
 class Molecule2D(_2DChemicalObj):
@@ -56,7 +60,7 @@ class Molecule2D(_2DChemicalObj):
 class Molecule3D(_3DChemicalObj, Molecule2D):
 
     def __init__(self, atoms: List[Atom3D] = None,
-                 bonds: List[Union[str, str, Bond3D]] = None,
+                 bonds: List[List[Union[str, Bond3D]]] = None,
                  esp_grid_coords: np.array = None,
                  esp_grid_charge: np.array = None,
                  esp_grid_parameters: dict = None,
@@ -477,28 +481,405 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
 
         return ob_mol
 
-class RDKitMolecule(_3DChemicalObj):
-    """
-    TODO: WARNING! NOT IMPLEMENTED.
-    """
+
+class NXMolWeaveFeaturizer(MolecularFeaturizer):
+    """This class implements the featurization to implement Weave convolutions.
+
+  Weave convolutions were introduced in [1]_. Unlike Duvenaud graph
+  convolutions, weave convolutions require a quadratic matrix of interaction
+  descriptors for each pair of atoms. These extra descriptors may provide for
+  additional descriptive power but at the cost of a larger featurized dataset.
+
+
+  Examples
+  --------
+  >>> import deepchem as dc
+  >>> mols = ["C", "CCC"]
+  >>> featurizer = dc.feat.WeaveFeaturizer()
+  >>> X = featurizer.featurize(mols)
+
+  References
+  ----------
+  .. [1] Kearnes, Steven, et al. "Molecular graph convolutions: moving beyond
+         fingerprints." Journal of computer-aided molecular design 30.8 (2016):
+         595-608.
+
+  Note
+  ----
+  This class requires RDKit to be installed.
+  """
+
+    name = ['weave_mol']
+
     def __init__(self,
-                 atoms: List[RDKitAtom] = None,
-                 bonds: List[RDKitBond] = None,
-                 name: str = ''
-                 ):
-        super().__init__(atoms, bonds, name)
+                 graph_distance: bool = True,
+                 explicit_H: bool = False,
+                 use_chirality: bool = False,
+                 max_pair_distance: Optional[int] = None):
+        """Initialize this featurizer with set parameters.
 
-    def __repr__(self):
-        return 'RDKitMol'
+    Parameters
+    ----------
+    graph_distance: bool, (default True)
+      If True, use graph distance for distance features. Otherwise, use
+      Euclidean distance. Note that this means that molecules that this
+      featurizer is invoked on must have valid conformer information if this
+      option is set.
+    explicit_H: bool, (default False)
+      If true, model hydrogens in the molecule.
+    use_chirality: bool, (default False)
+      If true, use chiral information in the featurization
+    max_pair_distance: Optional[int], (default None)
+      This value can be a positive integer or None. This
+      parameter determines the maximum graph distance at which pair
+      features are computed. For example, if `max_pair_distance==2`,
+      then pair features are computed only for atoms at most graph
+      distance 2 apart. If `max_pair_distance` is `None`, all pairs are
+      considered (effectively infinite `max_pair_distance`)
+    """
+        # Distance is either graph distance(True) or Euclidean distance(False,
+        # only support datasets providing Cartesian coordinates)
+        self.graph_distance = graph_distance
+        # Set dtype
+        self.dtype = object
+        # If includes explicit hydrogens
+        self.explicit_H = explicit_H
+        # If uses use_chirality
+        self.use_chirality = use_chirality
+        if isinstance(max_pair_distance, int) and max_pair_distance <= 0:
+            raise ValueError(
+                "max_pair_distance must either be a positive integer or None")
+        self.max_pair_distance = max_pair_distance
+        if self.use_chirality:
+            self.bt_len = int(GraphConvConstants.bond_fdim_base) + len(
+                GraphConvConstants.possible_bond_stereo)
+        else:
+            self.bt_len = 9  # int(GraphConvConstants.bond_fdim_base)
 
-    def GetNumAtoms(self):
-        return
+    def _featurize(self, mol: _2DChemicalObj):
+        """Encodes mol as a WeaveMol object."""
+        # Atom features
+        idx_nodes = [(a.get_index('nid'),
+                      nxmol_atom_features(
+                          a,
+                          explicit_H=self.explicit_H,
+                          use_chirality=self.use_chirality))
+                     for a in mol.atom_objects]
+        idx_nodes.sort()  # Sort by ind to ensure same order as rd_kit
+        idx, nodes = list(zip(*idx_nodes))
 
-    def GetAtoms(self):
-        return
+        # Stack nodes into an array
+        nodes = np.vstack(nodes)
 
-    def GetBonds(self):
-        return
+        # Get bond lists
+        bond_features_map = {}
+        for a1_name, a2_name in mol.bonds:
+            a1_id = mol.get_atom(a1_name).get_index('nid')
+            a2_id = mol.get_atom(a2_name).get_index('nid')
+            bond_features_map[tuple(sorted([a1_id, a2_id]))] = bond_features(mol.get_bond(a1_name, a2_name),
+                                                                       use_chirality=self.use_chirality)
+
+        # print("Bond features map: ", bond_features_map)
+        # print("Num nodes: ", len(nodes))
+        # print("Numeric atom ids: ", [atom.name for atom in mol.atom_objects])
+
+        # Get canonical adjacency list
+        bond_adj_list = [[] for _ in range(len(nodes))]
+        for bond in bond_features_map.keys():
+            bond_adj_list[bond[0]].append(bond[1])
+            bond_adj_list[bond[1]].append(bond[0])
+
+        # Calculate pair features
+        pairs, pair_edges = pair_features(
+            mol,
+            bond_features_map,
+            bond_adj_list,
+            bt_len=self.bt_len,
+            graph_distance=self.graph_distance,
+            max_pair_distance=self.max_pair_distance
+        )
+
+        return WeaveMol(nodes, pairs, pair_edges)
+
+def pair_features(mol: _2DChemicalObj,
+                  bond_features_map: dict,
+                  bond_adj_list: List,
+                  bt_len: int = 9,
+                  graph_distance: bool = True,
+                  max_pair_distance: Optional[int] = None) -> np.ndarray:
+    """Helper method used to compute atom pair feature vectors.
+
+  Many different featurization methods compute atom pair features
+  such as WeaveFeaturizer. Note that atom pair features could be
+  for pairs of atoms which aren't necessarily bonded to one
+  another.
+
+  Parameters
+  ----------
+  mol: RDKit Mol
+    Molecule to compute features on.
+  bond_features_map: dict
+    Dictionary that maps pairs of atom ids (say `(2, 3)` for a bond between
+    atoms 2 and 3) to the features for the bond between them.
+  bond_adj_list: list of lists
+    `bond_adj_list[i]` is a list of the atom indices that atom `i` shares a
+    bond with . This list is symmetrical so if `j in bond_adj_list[i]` then `i
+    in bond_adj_list[j]`.
+  bt_len: int, optional (default 6)
+    The number of different bond types to consider.
+  graph_distance: bool, optional (default True)
+    If true, use graph distance between molecules. Else use euclidean
+    distance. The specified `mol` must have a conformer. Atomic
+    positions will be retrieved by calling `mol.getConformer(0)`.
+  max_pair_distance: Optional[int], (default None)
+    This value can be a positive integer or None. This
+    parameter determines the maximum graph distance at which pair
+    features are computed. For example, if `max_pair_distance==2`,
+    then pair features are computed only for atoms at most graph
+    distance 2 apart. If `max_pair_distance` is `None`, all pairs are
+    considered (effectively infinite `max_pair_distance`)
+
+  Note
+  ----
+
+  Returns
+  -------
+  features: np.ndarray
+    Of shape `(N_edges, bt_len + max_distance + 1)`. This is the array
+    of pairwise features for all atom pairs, where N_edges is the
+    number of edges within max_pair_distance of one another in this
+    molecules.
+  pair_edges: np.ndarray
+    Of shape `(2, num_pairs)` where `num_pairs` is the total number of
+    pairs within `max_pair_distance` of one another.
+  """
+    if graph_distance:
+        max_distance = 7
+    else:
+        max_distance = 1
+    N = mol.num_atoms
+    pair_edges = max_pair_distance_pairs(mol, max_pair_distance)
+    num_pairs = pair_edges.shape[1]
+    N_edges = pair_edges.shape[1]
+    features = np.zeros((N_edges, bt_len + max_distance + 1))
+    # Get mapping
+    mapping = {}
+    for n in range(N_edges):
+        a1, a2 = pair_edges[:, n]
+        mapping[(int(a1), int(a2))] = n
+    num_atoms = mol.num_atoms
+
+    rings = mol.rings  # mol.GetRingInfo().AtomRings()
+    for a1 in range(num_atoms):
+        for a2 in bond_adj_list[a1]:
+            # first `bt_len` features are bond features(if applicable)
+            if (int(a1), int(a2)) not in mapping:
+                raise ValueError(
+                    "Malformed molecule with bonds not in specified graph distance.")
+            else:
+                n = mapping[(int(a1), int(a2))]
+            features[n, :bt_len] = np.asarray(
+                bond_features_map[tuple(sorted((a1, a2)))], dtype=float)
+        for ring in rings:
+            if a1 in ring:
+                for a2 in ring:
+                    if (int(a1), int(a2)) not in mapping:
+                        # For ring pairs outside max pairs distance continue
+                        continue
+                    else:
+                        n = mapping[(int(a1), int(a2))]
+                    # `bt_len`-th feature is if the pair of atoms are in the same ring
+                    if a2 == a1:
+                        features[n, bt_len] = 0
+                    else:
+                        features[n, bt_len] = 1
+        # graph distance between two atoms
+        if graph_distance:
+            # distance is a matrix of 1-hot encoded distances for all atoms
+            distance = find_distance(
+                a1, num_atoms, bond_adj_list, max_distance=max_distance)
+            for a2 in range(num_atoms):
+                if (int(a1), int(a2)) not in mapping:
+                    # For ring pairs outside max pairs distance continue
+                    continue
+                else:
+                    n = mapping[(int(a1), int(a2))]
+                    features[n, bt_len + 1:] = distance[a2]
+
+    # Euclidean distance between atoms
+    # if not graph_distance:
+    #   coords = np.zeros((N, 3))
+    #   for atom in range(N):
+    #     pos = mol.GetConformer(0).GetAtomPosition(atom)
+    #     coords[atom, :] = [pos.x, pos.y, pos.z]
+    #   features[:, :, -1] = np.sqrt(np.sum(np.square(
+    #     np.stack([coords] * N, axis=1) - \
+    #     np.stack([coords] * N, axis=0)), axis=2))
+
+    return features, pair_edges
+
+
+def nxmol_atom_features(atom: _Atom,
+                        bool_id_feat=False,
+                        explicit_H=True,
+                        use_chirality=False):
+    """Helper method used to compute per-atom feature vectors.
+
+  Many different featurization methods compute per-atom features such as ConvMolFeaturizer, WeaveFeaturizer. This method computes such features.
+
+  Parameters
+  ----------
+  bool_id_feat: bool, optional
+    Return an array of unique identifiers corresponding to atom type.
+  explicit_H: bool, optional
+    If true, model hydrogens explicitly
+  use_chirality: bool, optional
+    If true, use chirality information.
+
+  Returns
+  -------
+  np.ndarray of per-atom features.
+  """
+    # if bool_id_feat:
+    #     return np.array([atom_to_id(atom)])
+    # else:
+    # from rdkit import Chem
+    # TODO: this is where we can modify atom featurization
+    results = \
+        one_of_k_encoding(atom.element, ELECTRONEGATIVITIES.keys()) + \
+        [atom.formal_charge] + \
+        [atom.non_bonded_electrons] + \
+        [atom.is_conjugated] + \
+        one_of_k_encoding(atom.valence, [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5])
+        #one_of_k_encoding(atom.hybridisation, [-SP3D2_HYB, -SP3D_HYB, -SP3_HYB, -SP2_HYB, -SP_HYB, 0, SP_HYB, SP2_HYB, SP3_HYB, SP3D_HYB, SP3D2_HYB])  # MAY LEAD TO MULTICOLINEARITY, DUE TO DEPENDENCE ON OTHER FACTORS
+        #one_of_k_encoding(atom.hybridisation, [SP_HYB, SP2_HYB, SP3_HYB, SP3D_HYB, SP3D2_HYB])
+    # TODO: CHECK THESE VALUES!!!
+
+    # print("Atom one hot encoding: ", results)
+
+    # In case of explicit hydrogen(QM8, QM9), avoid calling `GetTotalNumHs`
+    # if not explicit_H:
+    #     results = results + one_of_k_encoding_unk(atom.GetTotalNumHs(),
+    #                                               [0, 1, 2, 3, 4])
+    # if use_chirality:
+    #     try:
+    #         results = results + one_of_k_encoding_unk(
+    #             atom.GetProp('_CIPCode'),
+    #             ['R', 'S']) + [atom.HasProp('_ChiralityPossible')]
+    #     except:
+    #         results = results + [False, False
+    #                              ] + [atom.HasProp('_ChiralityPossible')]
+
+    return np.array(results)
+
+
+def bond_features(bond: _Bond, use_chirality=False):
+    """Helper method used to compute bond feature vectors.
+
+  Many different featurization methods compute bond features
+  such as WeaveFeaturizer. This method computes such features.
+
+  Parameters
+  ----------
+  use_chirality: bool, optional
+    If true, use chirality information.
+
+  Note
+  ----
+  This method requires RDKit to be installed.
+
+  Returns
+  -------
+  bond_feats: np.ndarray
+    Array of bond features. This is a 1-D array of length 6 if `use_chirality`
+    is `False` else of length 10 with chirality encoded.
+  """
+    # try:
+    #     from rdkit import Chem
+    # except ModuleNotFoundError:
+    #     raise ImportError("This method requires RDKit to be installed.")
+    bt = bond.order
+
+    bond_feats = [one_of_k_encoding(bt, [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2]),
+                  # bt == SINGLE, bt == DOUBLE, bt == TRIPLE, bt == AROMATIC,  # (this implies we store 1.5 as aromatic bond order)
+                  # bond.is_conjugated,  # TODO: include this stuff, and get aromatic bond order working above^^
+                  # bond.is_in_ring
+                  ]
+
+    # if use_chirality:
+    #     bond_feats = bond_feats + one_of_k_encoding_unk(
+    #         str(bond.GetStereo()), GraphConvConstants.possible_bond_stereo)
+    return np.array(bond_feats)
+
+
+def max_pair_distance_pairs(mol: _2DChemicalObj,
+                            max_pair_distance: Optional[int] = None) -> np.ndarray:
+    """Helper method which finds atom pairs within max_pair_distance graph distance.
+
+      This helper method is used to find atoms which are within max_pair_distance
+      graph_distance of one another. This is done by using the fact that the
+      powers of an adjacency matrix encode path connectivity information. In
+      particular, if `adj` is the adjacency matrix, then `adj**k` has a nonzero
+      value at `(i, j)` if and only if there exists a path of graph distance `k`
+      between `i` and `j`. To find all atoms within `max_pair_distance` of each
+      other, we can compute the adjacency matrix powers `[adj, adj**2,
+      ...,adj**max_pair_distance]` and find pairs which are nonzero in any of
+      these matrices. Since adjacency matrices and their powers are positive
+      numbers, this is simply the nonzero elements of `adj + adj**2 + ... +
+      adj**max_pair_distance`.
+
+  Parameters
+  ----------
+  mol: rdkit.Chem.rdchem.Mol
+    RDKit molecules
+  max_pair_distance: Optional[int], (default None)
+    This value can be a positive integer or None. This
+    parameter determines the maximum graph distance at which pair
+    features are computed. For example, if `max_pair_distance==2`,
+    then pair features are computed only for atoms at most graph
+    distance 2 apart. If `max_pair_distance` is `None`, all pairs are
+    considered (effectively infinite `max_pair_distance`)
+
+  Examples
+  --------
+  >>> from rdkit import Chem
+  >>> mol = Chem.MolFromSmiles('CCC')
+  >>> features = dc.feat.graph_features.max_pair_distance_pairs(mol, 1)
+  >>> type(features)
+  <class 'numpy.ndarray'>
+  >>> features.shape  # (2, num_pairs)
+  (2, 7)
+
+  Returns
+  -------
+  np.ndarray
+    Of shape `(2, num_pairs)` where `num_pairs` is the total number of pairs
+    within `max_pair_distance` of one another.
+  """
+    #from rdkit import Chem
+    #from rdkit.Chem import rdmolops
+    N = mol.num_atoms
+    if (max_pair_distance is None or max_pair_distance >= N):
+        max_distance = N
+    elif max_pair_distance is not None and max_pair_distance <= 0:
+        raise ValueError("max_pair_distance must either be a positive integer or None")
+    elif max_pair_distance is not None:
+        max_distance = max_pair_distance
+
+    adj = mol.get_graph_adj_mat() #rdmolops.GetAdjacencyMatrix(mol)
+    # print(type(adj))
+
+    # Handle edge case of self-pairs (i, i)
+    sum_adj = np.eye(N)
+    for i in range(max_distance):
+        # Increment by 1 since we don't want 0-indexing
+        power = i + 1
+        sum_adj += np.linalg.matrix_power(adj, power)
+    nonzero_locs = np.where(sum_adj != 0)
+    num_pairs = len(nonzero_locs[0])
+    # This creates a matrix of shape (2, num_pairs)
+    pair_edges = np.reshape(np.array(list(zip(nonzero_locs))), (2, num_pairs))
+    return pair_edges
 
 
 if __name__ == "__main__":
