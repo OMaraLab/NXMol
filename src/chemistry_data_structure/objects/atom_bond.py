@@ -349,24 +349,3 @@ class Bond3D(_Bond):
 
 
 class RDKitBond(_Bond):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def GetBeginAtomIdx(self):
-        return
-
-    def GetEndAtomIdx(self):
-        return
-
-    def GetBondType(self):
-        return
-
-    def GetIsConjugated(self):
-        return
-
-    def isInRing(self):
-        return
-
-    def GetStereo(self):
-        return
