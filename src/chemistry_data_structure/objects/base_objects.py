@@ -1202,6 +1202,35 @@ class _2DChemicalObj:
         """
         nx.write_gml(self.graph, fpath, stringizer=nx.readwrite.gml.literal_stringizer)
 
+    def BFS_edge(self, node1: int, node2: int, depth: int) -> np.ndarray:
+        """
+        Breadth-First search from an EDGE to return a ndarray of the nodes and
+        edges in a given neighbourhood size.
+        :param node1: the index of the first node invovled in the covalent bond
+        in question
+        :param node2: the other node invovled in the covalent bond
+        :param depth: the depth of the search (degree of neighbourhood)
+        :return: an ndarray that contains the elements and edges in the
+        {depth}th-degree neighbourhood of the covalent bond
+        """
+        visited, idx_q = set(), queue.Queue()
+        visited.update([node1, node2])
+        uniq_nei = set(*[x for x in self.graph.neighbors(node1)])
+        uniq_nei.add(*[x for x in self.graph.neighbors(node2)])
+        idx_q.put_nowait(uniq_nei)
+
+        level = 0
+        while not idx_q.empty():
+            level_size = idx_q.qsize()
+            current_node = idx_q.get()
+            visited.add(current_node)
+            while (level_size != 0) and (level == depth):
+                for neighbour in [x for x in self.graph.neighbors((current_node))]:
+                    if neighbour not in visited:
+                        visited.add(neighbour)
+                        idx_q.put_nowait(neighbour)
+            level += 1
+
 
 class _3DChemicalObj(_2DChemicalObj):
     def __init__(self, atoms, bonds, name: str = "", net_charge=None):
