@@ -3,4 +3,5 @@
 helpers/__pycache__/
 parsing/__pycache__/
 build/
-src/chemistry_data_structure.egg-info/
+src/test_dataset
+src/test.py

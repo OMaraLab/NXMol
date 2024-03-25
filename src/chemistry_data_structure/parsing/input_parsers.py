@@ -10,6 +10,7 @@ import networkx as nx
 import numpy as np
 
 
+from chemistry_data_structure.parsing.bond_len_reg import cal_bond_length
 from chemistry_data_structure.parsing.hessian_analysis import (
     cal_eigen_matrix,
     cal_stretching,
@@ -59,14 +60,18 @@ def _bond_for_atom_line(line: str):
     return ([int(atom_id_1), int(atom_id_2)], bond_order)
 
 
-def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_ORDER_THRESHOLD=0.85):
+def ATB_QMData_to_Molecule3D(
+    qm_data, net_charge=None, name="", COVALENT_BOND_ORDER_THRESHOLD=0.85
+):
     """
     Parse a pickled QM output file to construct a Molecule3D
     """
 
     atoms = [
         Atom3D(f"{i}", element_type, tuple(coords))
-        for (i, element_type), coords in zip(qm_data["type"].items(), qm_data["primary_axis_coords"].values())
+        for (i, element_type), coords in zip(
+            qm_data["type"].items(), qm_data["primary_axis_coords"].values()
+        )
     ]
     # set zero indexed ids that are used in the weave featurisation later
     for i, atom in enumerate(atoms):
@@ -80,13 +85,31 @@ def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_OR
     bonds = []
     for i, j, bond_order in qm_data["bond_order"]:
         if bond_order > COVALENT_BOND_ORDER_THRESHOLD:
-            force_constants[frozenset([i, j])] = cal_stretching([i, j], umatrix, eigmatrix)
+            force_constants[frozenset([i, j])] = cal_stretching(
+                [i, j], umatrix, eigmatrix
+            )
             atom_names = [str(i), str(j)]
-            bonds.append(atom_names + [Bond3D(set(atom_names), order=bond_order)])
+            bonds.append(
+                atom_names
+                + [
+                    Bond3D(
+                        set(atom_names),
+                        order=bond_order,
+                    )
+                ]
+            )
+
+            bonds[-1][-1].update(
+                force_constant=cal_stretching([i, j], umatrix, eigmatrix),
+                bond_length=cal_bond_length(qm_data, (i, j)),
+            )
 
     mol3D = Molecule3D(atoms=atoms, bonds=bonds, name=name, net_charge=net_charge)
     mol3D.assign_bond_orders_and_charges_with_ILP(net_charge)
     mol3D.assign_hybridisations_and_valences()
+    # The way 2DChemicalObj is implemented right now, edge attributes need to
+    # be added after constrcution. This is inefficient but I will refrain from
+    # refactoring too much
     return mol3D
 
 

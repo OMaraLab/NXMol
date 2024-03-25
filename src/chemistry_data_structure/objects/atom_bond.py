@@ -321,8 +321,8 @@ class _Bond(dict):
 
     def __setitem__(self, key, value):
         # might need to set this up given the way networkx interfaces
-        #self._attributes.__setitem__(key, value)
-        self.__dict__[key] = value
+        self.attributes.__setitem__(key, value)
+        # self.__dict__[key] = value
 
     def __contains__(self, item):
         return self.attributes.__contains__(item)

@@ -1202,7 +1202,7 @@ class _2DChemicalObj:
         """
         nx.write_gml(self.graph, fpath, stringizer=nx.readwrite.gml.literal_stringizer)
 
-    def BFS_edge(self, node1: int, node2: int, depth: int) -> np.ndarray:
+    def BFS_edge(self, node1: str, node2: str, depth: int) -> list:
         """
         Breadth-First search from an EDGE to return a ndarray of the nodes and
         edges in a given neighbourhood size.
@@ -1213,23 +1213,30 @@ class _2DChemicalObj:
         :return: an ndarray that contains the elements and edges in the
         {depth}th-degree neighbourhood of the covalent bond
         """
-        visited, idx_q = set(), queue.Queue()
-        visited.update([node1, node2])
-        uniq_nei = set(*[x for x in self.graph.neighbors(node1)])
-        uniq_nei.add(*[x for x in self.graph.neighbors(node2)])
-        idx_q.put_nowait(uniq_nei)
 
-        level = 0
-        while not idx_q.empty():
-            level_size = idx_q.qsize()
-            current_node = idx_q.get()
-            visited.add(current_node)
-            while (level_size != 0) and (level == depth):
-                for neighbour in [x for x in self.graph.neighbors((current_node))]:
-                    if neighbour not in visited:
-                        visited.add(neighbour)
-                        idx_q.put_nowait(neighbour)
-            level += 1
+        assert (node1, node2) in self.bonds or (node2, node1) in self.bonds
+
+        visited_nei = set()
+        for x in (node1, node2):
+            idx_q = queue.Queue()
+            visited_nei.add(x)
+            idx_q.put_nowait(x)
+
+            level = 0
+            while (idx_q.empty() != True) and level < depth:
+                level_size = idx_q.qsize()
+                while level_size != 0:
+                    current_node = idx_q.get_nowait()
+                    for nei in [nei for nei in self.graph.neighbors(current_node)]:
+                        if nei not in visited_nei:
+                            visited_nei.add(nei + " " + current_node)
+                            idx_q.put_nowait(nei)
+                    level_size -= 1
+
+                level += 1
+
+        bonds = [tuple(i.split()) for i in visited_nei if " " in i]
+        return bonds
 
 
 class _3DChemicalObj(_2DChemicalObj):
