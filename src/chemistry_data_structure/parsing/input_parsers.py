@@ -59,7 +59,7 @@ def _bond_for_atom_line(line: str):
     return ([int(atom_id_1), int(atom_id_2)], bond_order)
 
 
-def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_ORDER_THRESHOLD=0.85):
+def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_ORDER_THRESHOLD=0.50):
     """
     Parse a pickled QM output file to construct a Molecule3D
     """
@@ -83,6 +83,11 @@ def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_OR
             force_constants[frozenset([i, j])] = cal_stretching([i, j], umatrix, eigmatrix)
             atom_names = [str(i), str(j)]
             bonds.append(atom_names + [Bond3D(set(atom_names), order=bond_order)])
+
+    # Ensure all atoms are connected
+    for a in atoms:
+        if not any([a.name in b for b in bonds]):
+            raise Exception(f"Atom not connected by a bond: {a}")
 
     mol3D = Molecule3D(atoms=atoms, bonds=bonds, name=name, net_charge=net_charge)
     mol3D.assign_bond_orders_and_charges_with_ILP(net_charge)
