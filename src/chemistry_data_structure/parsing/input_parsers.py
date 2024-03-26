@@ -108,6 +108,7 @@ def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_OR
             raise Exception(f"Atom not connected by a bond: {a}")
 
     mol3D = Molecule3D(atoms=atoms, bonds=bonds, name=name, net_charge=net_charge)
+    assert nx.is_connected(mol3D.graph), "Molecule is not fully connected i.e., missing a covalent bond."
     mol3D.assign_bond_orders_and_charges_with_ILP(net_charge)
     mol3D.assign_hybridisations_and_valences()
     # The way 2DChemicalObj is implemented right now, edge attributes need to
