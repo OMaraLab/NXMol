@@ -730,7 +730,7 @@ class _2DChemicalObj:
             if disallow_allenes_completely:
                 atom_bonds = [bond for bond in self.bonds if atom.get_index() in bond]
                 if atom.element == "C" and len(atom_bonds) == 2:
-                    non_allene_atoms[atom] = atom_bonds
+                    non_allene_atoms[atom.get_index()] = atom_bonds
 
         # ===== VARIABLES =====
 
@@ -870,7 +870,7 @@ class _2DChemicalObj:
 
         for atom, (bond_1, bond_2) in non_allene_atoms.items():
             new_allene_switch = LpVariable(
-                "A_{i}".format(i=atom.get_index()), 0, 1, LpBinary
+                "A_{i}".format(i=atom), 0, 1, LpBinary
             )
             problem += (
                 2 * bond_orders[bond_1] - bond_orders[bond_2] + 4 * new_allene_switch
@@ -1202,7 +1202,7 @@ class _2DChemicalObj:
         """
         nx.write_gml(self.graph, fpath, stringizer=nx.readwrite.gml.literal_stringizer)
 
-    def BFS_edge(self, node1: str, node2: str, depth: int) -> list:
+    def BFS_edge(self, node1: str, node2: str, depth: int):
         """
         Breadth-First search from an EDGE to return a ndarray of the nodes and
         edges in a given neighbourhood size.
@@ -1229,14 +1229,17 @@ class _2DChemicalObj:
                     current_node = idx_q.get_nowait()
                     for nei in [nei for nei in self.graph.neighbors(current_node)]:
                         if nei not in visited_nei:
-                            visited_nei.add(nei + " " + current_node)
+                            # visited_nei.add(nei + " " + current_node)
+                            visited_nei.add(nei)
                             idx_q.put_nowait(nei)
                     level_size -= 1
 
                 level += 1
 
-        bonds = [tuple(i.split()) for i in visited_nei if " " in i]
-        return bonds
+        # bonds = [tuple(i.split()) for i in visited_nei if " " in i]
+        visited_nei.remove(node1)
+        visited_nei.remove(node2)
+        return ''.join(sorted([self.atoms[id].element for id in visited_nei]))
 
 
 class _3DChemicalObj(_2DChemicalObj):

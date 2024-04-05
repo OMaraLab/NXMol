@@ -1,7 +1,10 @@
 *.idea/
 *__pycache__/
+*.pickle
 helpers/__pycache__/
 parsing/__pycache__/
 build/
 src/test_dataset
 src/test.py
+src/.ipynb_checkpoints
+src/test_load.py
