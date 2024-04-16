@@ -1,10 +1,10 @@
 import pickle
+from pprint import pprint
 from pathlib import Path
 import matplotlib.pyplot as plt
 
 from chemistry_data_structure.objects.molecular_entity import NXMolWeaveFeaturizer
 from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecule3D
-
 
 
 def load_qm_data(molid: str):
@@ -40,12 +40,13 @@ def bond_order_hist():
     fig.tight_layout()
     ax.hist(bond_orders, 50, density=True)
 
-    ax.set_xlabel('Bond order')
-    ax.set_ylabel('Probability density')
+    ax.set_xlabel("Bond order")
+    ax.set_ylabel("Probability density")
     fig.tight_layout()
     plt.show()
 
 
 if __name__ == "__main__":
-    # single_test()
-    bond_order_hist()
+    qm = load_qm_data("21")
+    mol3D = ATB_QMData_to_Molecule3D(qm)
+    # mol3D.draw_graph()

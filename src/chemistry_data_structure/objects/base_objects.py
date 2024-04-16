@@ -1217,6 +1217,7 @@ class _2DChemicalObj:
         assert (node1, node2) in self.bonds or (node2, node1) in self.bonds
 
         visited_nei = set()
+        node1_nei, node2_nei = str(), str()
         for x in (node1, node2):
             idx_q = queue.Queue()
             visited_nei.add(x)
@@ -1229,18 +1230,30 @@ class _2DChemicalObj:
                     current_node = idx_q.get_nowait()
                     for nei in [nei for nei in self.graph.neighbors(current_node)]:
                         if nei not in visited_nei:
-                            # visited_nei.add(nei + " " + current_node)
-                            visited_nei.add(nei)
+                            visited_nei.add(nei + " " + current_node)
+                            # visited_nei.add(nei)
                             idx_q.put_nowait(nei)
                     level_size -= 1
 
                 level += 1
 
         # bonds = [tuple(i.split()) for i in visited_nei if " " in i]
-        visited_nei.remove(node1)
-        visited_nei.remove(node2)
-        return ''.join(sorted([self.atoms[id].element for id in visited_nei]))
+        # return ''.join(sorted([self.atoms[id].element for id in visited_nei]))
+        visited_nei |= set([f"{node1} {node2}", f"{node2} {node1}"])
+        for y in visited_nei:
+            # if " " in x:
+            #     assert (node1 == x.split(" ")[1]) or (node2 == x.split(" ")[1])
+            if " " in y:
+                if node1 == y.split(" ")[1]:
+                    node1_nei += self.atoms[y.split(" ")[0]].element
+                elif node2 == y.split(" ")[1]:
+                    node2_nei += self.atoms[y.split(" ")[0]].element
+        # return 
+        return [''.join(sorted(z)) for z in [node1_nei, node2_nei]]
 
+
+            
+            
 
 class _3DChemicalObj(_2DChemicalObj):
     def __init__(self, atoms, bonds, name: str = "", net_charge=None):

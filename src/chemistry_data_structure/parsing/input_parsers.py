@@ -100,6 +100,7 @@ def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_OR
             bonds[-1][-1].update(
                 force_constant=cal_stretching([i, j], umatrix, eigmatrix),
                 bond_length=cal_bond_length(qm_data, (i, j)),
+                fract_bond_order=bond_order
             )
 
     # Ensure all atoms are connected
