@@ -8,5 +8,4 @@ src/test_dataset
 src/test.py
 src/.ipynb_checkpoints
 src/test_load.py
-src/test_dataset_small
 src/test_dataset_big
