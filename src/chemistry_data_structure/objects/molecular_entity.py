@@ -80,6 +80,13 @@ class Molecule3D(_3DChemicalObj, Molecule2D):
     def rmsdFit(self):
         return
 
+    def calcNumBonds(self, atomId: str):
+        n_bonds = 0
+        for i, j in self.bonds.keys():
+            if (i == atomId) or (j == atomId):
+                n_bonds += 1
+        return n_bonds
+
     def setPartialCharges(self, charges: dict, index_type='name'):
         for atom_id, value in charges.items():
             self.get_atom(atom_id, index_type=index_type).partial_charge = value

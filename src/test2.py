@@ -8,7 +8,7 @@ from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecul
 
 
 def load_qm_data(molid: str):
-    with open(f"test_dataset/{molid}/b3lyp_631Gd_PCM_water_hessian.pickle", "rb") as fh:
+    with open(f"test_dataset_big/{molid}/b3lyp_631Gd_PCM_water_hessian.pickle", "rb") as fh:
         return pickle.load(fh)
 
 
@@ -49,4 +49,4 @@ def bond_order_hist():
 if __name__ == "__main__":
     qm = load_qm_data("21")
     mol3D = ATB_QMData_to_Molecule3D(qm)
-    # mol3D.draw_graph()
+    mol3D.draw_graph()

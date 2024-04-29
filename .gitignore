@@ -1,6 +1,5 @@
 *.idea/
 *__pycache__/
-*.pickle
 helpers/__pycache__/
 parsing/__pycache__/
 build/
@@ -9,3 +8,9 @@ src/test.py
 src/.ipynb_checkpoints
 src/test_load.py
 src/test_dataset_big
+src/test_dataset_small
+src/X.pickle
+src/X_big.pickle
+src/Y.pickle
+src/Y_big.pickle
+src/netcharges.csv

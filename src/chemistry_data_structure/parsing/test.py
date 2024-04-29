@@ -13,13 +13,14 @@ def load_qm_data(molid: str):
 
 
 def single_test():
-    molid = "1009"
+    molid = "8"
     example_qm_data = load_qm_data(molid)
     mol3D = ATB_QMData_to_Molecule3D(example_qm_data, net_charge=0, name=molid)
-    mol3D.draw_graph()
-    featurizer = NXMolWeaveFeaturizer()
-    weave_mol = featurizer._featurize(mol3D)
-    print(weave_mol)
+    print(mol3D.atoms["1"].atomic_number)
+    # mol3D.draw_graph()
+    # featurizer = NXMolWeaveFeaturizer()
+    # weave_mol = featurizer._featurize(mol3D)
+    # print(weave_mol)
 
 
 def load_all_qm_data():
@@ -47,5 +48,5 @@ def bond_order_hist():
 
 
 if __name__ == "__main__":
-    # single_test()
-    bond_order_hist()
+    single_test()
+    # bond_order_hist()

@@ -30,6 +30,51 @@ FULL_VALENCES = {
     'SI': {4},
 }
 
+ATOMIC_NUMBER = {
+    'H': 1, 
+    'B': 5, 
+    'C': 6, 
+    'N': 7, 
+    'O': 8, 
+    'P': 15,
+    'S': 16,
+    'SI': 14,
+    'F': 9,
+    'CL': 17,
+    'BR': 35,
+    'I': 53,
+}
+
+RADIUS = {
+    'H': 25,
+    'B': 85,
+    'C': 70,
+    'N': 65,
+    'O': 60,
+    'P': 100,
+    'S': 100,
+    'SI': 110,
+    'F': 50,
+    'CL': 100,
+    'BR': 115,
+    'I': 140,
+}
+
+MASS = {
+    'H': 1.01, 
+    'B': 10.8, 
+    'C': 12.0, 
+    'N': 14.0, 
+    'O': 16.0, 
+    'P': 31.0,
+    'S': 32.1,
+    'SI': 28.1,
+    'F': 19.0,
+    'CL': 35.5,
+    'BR': 79.9,
+    'I': 126.9,
+}
+
 ELECTRONEGATIVITIES = {
     # Source: https://en.wikipedia.org/wiki/Electronegativity
     'H': 2.20, 'HE': None,

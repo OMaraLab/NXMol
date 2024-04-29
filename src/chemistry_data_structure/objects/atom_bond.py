@@ -192,6 +192,10 @@ class Atom3D(_Atom):
     def __init__(self, name, element, coordinates, **kwargs):
         super().__init__(name, element, **kwargs)
         self.coordinates: tuple = coordinates
+        self.radius = kwargs["radius"]
+        self.mass = kwargs["mass"]
+        self.electronegativity = kwargs["electronegativity"]
+        self.atomic_number = kwargs["atomic_number"]
 
     def __str__(self):
         return f"Atom3D(Name: {self.name}, Element: {self.element}, Coordinates: {self.coordinates}, " \

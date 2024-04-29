@@ -26,6 +26,10 @@ from chemistry_data_structure.helpers.chem import (
     BOHR_PER_ANG,
     BOHR_PER_NM,
     FULL_VALENCES,
+    ATOMIC_NUMBER,
+    RADIUS,
+    MASS,
+    ELECTRONEGATIVITIES,
     VALENCE_ELECTRONS,
 )
 
@@ -66,7 +70,11 @@ def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_OR
     """
 
     atoms = [
-        Atom3D(f"{i}", element_type, tuple(coords))
+        Atom3D(f"{i}", element_type, tuple(coords),
+               atomic_number=ATOMIC_NUMBER[element_type],
+               radius=RADIUS[element_type],
+               mass=MASS[element_type],
+               electronegativity=ELECTRONEGATIVITIES[element_type])
         for (i, element_type), coords in zip(
             qm_data["type"].items(), qm_data["primary_axis_coords"].values()
         )
