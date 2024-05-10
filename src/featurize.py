@@ -1,18 +1,12 @@
 import pickle
 import os
 import csv
-import re
+import dgl
 import random
 import numpy as np
-import pandas as pd
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import OneHotEncoder
-
 import pickle
 
-from chemistry_data_structure.objects.molecular_entity import NXMolWeaveFeaturizer
 from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecule3D
-from chemistry_data_structure.parsing.test import single_test, bond_order_hist
 
 
 def load_qm_data(molid: str):
@@ -21,51 +15,52 @@ def load_qm_data(molid: str):
             with open(f"{dirpath}/{filename[0]}", "rb") as fh:
                 return pickle.load(fh)
 
+
 def load_qm_data_small(molid: str):
-    with open(f"test_dataset_small/{molid}/b3lyp_631Gd_PCM_water_hessian.pickle", "rb") as fh:
+    with open(
+        f"test_dataset_small/{molid}/b3lyp_631Gd_PCM_water_hessian.pickle", "rb"
+    ) as fh:
         return pickle.load(fh)
+
 
 if __name__ == "__main__":
     COVALENT_BOND_ORDER_THRESHOLD = 0.5
 
     dirs = os.listdir("test_dataset_big")
-    nbonds_mol = 0
-    for mol in dirs:
-        qm_data = load_qm_data(mol)
-        for b in qm_data["bond_order"]:
-            if b[-1] > COVALENT_BOND_ORDER_THRESHOLD:
-                nbonds_mol += 1
+    charges = []
+    with open("./netcharges.csv", newline="") as csvfile:
+        data = csv.reader(csvfile, delimiter="\t")
 
-    arr = []
-    with open('./netcharges.csv', newline='') as csvfile:
-        data = csv.reader(csvfile, delimiter='\t')
-        
         for idx, row in enumerate(data):
-            arr.append((row[0], row[1]))
+            charges.append((row[0], row[1]))
 
-    X = []
-    Y = np.zeros((nbonds_mol, 1))
+    graphs = {}
+    graph_ndatas = {}
+    graph_edatas = {}
     net_charge = 0
     idx = 0
     for mol in dirs:
-        for x, y in arr:
-            if mol == x:
-                net_charge = y
-        print(mol, net_charge)
+        X = []
+        y = {}
+        for id, charge in charges:
+            if mol == id:
+                net_charge = charge
         qm_data = load_qm_data(mol)
         mol3D = ATB_QMData_to_Molecule3D(qm_data, net_charge=int(net_charge), name=mol)
-        for i, j in mol3D.bonds.keys():
-            Y[idx, 0] = mol3D.bonds[i, j].get("force_constant")
+        for i, j in mol3D.bonds:
+            y[i, j] = mol3D.bonds[i, j].get("force_constant")
 
             if random.random() < 0.5:
                 X.append(
                     [
+                        int(i),
                         mol3D.atoms[i].element,
                         mol3D.atoms[i].atomic_number,
                         mol3D.atoms[i].radius,
                         mol3D.atoms[i].mass,
                         mol3D.atoms[i].electronegativity,
                         mol3D.calcNumBonds(i),
+                        int(j),
                         mol3D.atoms[j].element,
                         mol3D.atoms[j].atomic_number,
                         mol3D.atoms[j].radius,
@@ -80,12 +75,14 @@ if __name__ == "__main__":
             else:
                 X.append(
                     [
+                        int(j),
                         mol3D.atoms[j].element,
                         mol3D.atoms[j].atomic_number,
                         mol3D.atoms[j].radius,
                         mol3D.atoms[j].mass,
                         mol3D.atoms[j].electronegativity,
                         mol3D.calcNumBonds(j),
+                        int(i),
                         mol3D.atoms[i].element,
                         mol3D.atoms[i].atomic_number,
                         mol3D.atoms[i].radius,
@@ -98,9 +95,23 @@ if __name__ == "__main__":
                     ]
                 )
             idx += 1
+        graph_ndatas[mol] = X
+        graph_edatas[mol] = y
+        u = []
+        v = []
+        for i, j in mol3D.bonds:
+            u.append(int(i))
+            v.append(int(j))
+        tmp = u
+        u = u + v
+        v = v + tmp
+        graphs[mol] = dgl.graph((u, v))
 
-    with open("X_big.pickle", "wb") as handle:
-        pickle.dump(X, handle)
+    with open("graph_ndatas.pickle", "wb") as handle:
+        pickle.dump(graph_ndatas, handle)
 
-    with open("Y_big.pickle", "wb") as handle:
-        pickle.dump(Y, handle)
+    with open("graph_edatas.pickle", "wb") as handle:
+        pickle.dump(graph_edatas, handle)
+
+    with open("graphs.pickle", "wb") as handle:
+        pickle.dump(graphs, handle)

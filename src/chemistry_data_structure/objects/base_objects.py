@@ -139,7 +139,7 @@ class _2DChemicalObj:
     @property
     def bond_orders(self):
         return {
-            frozenset(bond_ids): self.get_bond(bond_ids[0], bond_ids[1]).order
+            tuple(bond_ids): self.get_bond(bond_ids[0], bond_ids[1]).order
             for bond_ids in self.bonds
         }
 

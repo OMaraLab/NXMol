@@ -70,7 +70,7 @@ def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_OR
     """
 
     atoms = [
-        Atom3D(f"{i}", element_type, tuple(coords),
+        Atom3D(f"{i-1}", element_type, tuple(coords),
                atomic_number=ATOMIC_NUMBER[element_type],
                radius=RADIUS[element_type],
                mass=MASS[element_type],
@@ -91,10 +91,10 @@ def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_OR
     bonds = []
     for i, j, bond_order in qm_data["bond_order"]:
         if bond_order > COVALENT_BOND_ORDER_THRESHOLD:
-            force_constants[frozenset([i, j])] = cal_stretching(
+            force_constants[frozenset([i-1, j-1])] = cal_stretching(
                 [i, j], umatrix, eigmatrix
             )
-            atom_names = [str(i), str(j)]
+            atom_names = [str(i-1), str(j-1)]
             bonds.append(
                 atom_names
                 + [
