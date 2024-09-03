@@ -34,3 +34,6 @@ src/graphs_large.pickle
 src/learning_curves.png
 *pickle
 *pdf
+src/old_feat.py
+src/synclist
+src/pre_cull_nbonds

@@ -8,10 +8,31 @@ import pickle
 
 from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecule3D
 
+# Print iterations progress
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
 
 def load_qm_data(molid: str):
-    for dirpath, dirname, filename in os.walk("test_dataset_big"):
-        if dirpath == f"test_dataset_big/{molid}":
+    for dirpath, dirname, filename in os.walk("hessian_data"):
+        if dirpath == f"hessian_data/{molid}":
             with open(f"{dirpath}/{filename[0]}", "rb") as fh:
                 return pickle.load(fh)
 
@@ -26,7 +47,7 @@ def load_qm_data_small(molid: str):
 if __name__ == "__main__":
     COVALENT_BOND_ORDER_THRESHOLD = 0.5
 
-    dirs = os.listdir("test_dataset_big")
+    dirs = os.listdir("hessian_data")
     charges = []
     with open("./netcharges.csv", newline="") as csvfile:
         data = csv.reader(csvfile, delimiter="\t")

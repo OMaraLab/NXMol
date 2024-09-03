@@ -1,8 +1,12 @@
+import statistics
 from typing import List, Tuple, Callable, Sequence, Set
 
 from networkx import Graph
 from networkx.algorithms import is_isomorphic
 
+from atb_outputs.mol_data import MolData, MolDataFailure
+from chemical_equivalence.calcChemEquivalency import getChemEquivGroups
+from chemistry_data_structure.objects.molecular_entity import Molecule3D
 from chemistry_data_structure.objects.atom_bond import _Atom, _Bond
 from chemistry_data_structure.objects.base_objects import _2DChemicalObj
 
@@ -29,6 +33,41 @@ def lewis_graph(molecule: _2DChemicalObj, use_non_bonded_electrons: bool = True)
 
     return G
 
+def calc_equal_bonds(mol: Molecule3D):
+    mol_data = MolData(mol)
+    eq_grps, _ = getChemEquivGroups(mol_data)
+    eq_grps_sorted = {}
+    for i, j in mol.bonds:
+        #The atom indices in getChemEquivGroups start from 1, not 0
+        i = int(i)+1
+        j = int(j)+1
+        if (eq_grps[i], eq_grps[j]) not in eq_grps_sorted and (eq_grps[j], eq_grps[i]) not in eq_grps_sorted:
+            eq_grps_sorted[(eq_grps[i], eq_grps[j])] = [(str(i-1), str(j-1))]
+        elif (eq_grps[i], eq_grps[j]) in eq_grps_sorted:
+            eq_grps_sorted[(eq_grps[i], eq_grps[j])].append((str(i-1), str(j-1)))
+        elif (eq_grps[j], eq_grps[i]) in eq_grps_sorted:
+            eq_grps_sorted[(eq_grps[j], eq_grps[i])].append((str(i-1), str(j-1)))
+    mol.eq_grps_sorted = eq_grps_sorted
+
+def cull_equal_bonds(mol: Molecule3D, aggregator="mean"):
+    for v in mol.eq_grps_sorted.values():
+        if len(v) > 1: 
+            if aggregator == "mean":
+                eq_list = [mol.bonds[(i, j)].get("force_constant") for (i, j) in v]
+                print(eq_list)
+                print(statistics.mean(eq_list))
+                mol.bonds[v[0]].update(force_constant=statistics.mean([mol.bonds[
+                                       (i, j)].get("force_constant") for (i, j) 
+                                       in v]))
+            elif aggregator == "median":
+                eq_list = [mol.bonds[(i, j)].get("force_constant") for (i, j) in v]
+                print(eq_list)
+                print(statistics.median(eq_list))
+                mol.bonds[v[0]].update(force_constant=statistics.median([mol.bonds[
+                                       (i, j)].get("force_constant") for (i, j) 
+                                       in v]))
+        for (rm1, rm2) in v[1:]:
+            mol.remove_bond(rm1, rm2)
 
 def are_atoms_equivalent(node_1: _Atom, node_2: _Atom) -> bool:
     return node_1['element'] == node_2['element'] #and node_1['non_bonded_electrons'] == node_2['non_bonded_electrons']
