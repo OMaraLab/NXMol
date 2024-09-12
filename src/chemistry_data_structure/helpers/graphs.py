@@ -49,25 +49,22 @@ def calc_equal_bonds(mol: Molecule3D):
             eq_grps_sorted[(eq_grps[j], eq_grps[i])].append((str(i-1), str(j-1)))
     mol.eq_grps_sorted = eq_grps_sorted
 
-def cull_equal_bonds(mol: Molecule3D, aggregator="mean"):
+def cull_equal_bonds(mol: Molecule3D, aggregator="mean", graph=False):
     for v in mol.eq_grps_sorted.values():
         if len(v) > 1: 
             if aggregator == "mean":
-                eq_list = [mol.bonds[(i, j)].get("force_constant") for (i, j) in v]
-                print(eq_list)
-                print(statistics.mean(eq_list))
-                mol.bonds[v[0]].update(force_constant=statistics.mean([mol.bonds[
-                                       (i, j)].get("force_constant") for (i, j) 
-                                       in v]))
+                mean_fc = statistics.mean([mol.bonds[(i, j)].get("force_constant")
+                                                            for (i, j) in v])
+                for eq_bonds in v:
+                    mol.bonds[eq_bonds].update(force_constant=mean_fc)
             elif aggregator == "median":
-                eq_list = [mol.bonds[(i, j)].get("force_constant") for (i, j) in v]
-                print(eq_list)
-                print(statistics.median(eq_list))
-                mol.bonds[v[0]].update(force_constant=statistics.median([mol.bonds[
-                                       (i, j)].get("force_constant") for (i, j) 
-                                       in v]))
-        for (rm1, rm2) in v[1:]:
-            mol.remove_bond(rm1, rm2)
+                mean_fc = statistics.mean([mol.bonds[(i, j)].get("force_constant")
+                                                            for (i, j) in v])
+                for eq_bonds in v:
+                    mol.bonds[eq_bonds].update(force_constant=mean_fc)
+        if not graph:
+            for (rm1, rm2) in v[1:]:
+                mol.remove_bond(rm1, rm2)
 
 def are_atoms_equivalent(node_1: _Atom, node_2: _Atom) -> bool:
     return node_1['element'] == node_2['element'] #and node_1['non_bonded_electrons'] == node_2['non_bonded_electrons']

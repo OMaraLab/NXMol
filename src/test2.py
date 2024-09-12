@@ -53,8 +53,9 @@ if __name__ == "__main__":
     qm = load_qm_data("21")
     mol3D = ATB_QMData_to_Molecule3D(qm)
     print(mol3D.bonds)
-    calc_equal_bonds(mol3D)
-    print(mol3D.eq_grps_sorted)
-    cull_equal_bonds(mol3D)
-    for b in mol3D.bonds:
-        print(b, mol3D.bonds[b].get("force_constant"))
+    print(mol3D.bonds[('0', '1')])
+    # calc_equal_bonds(mol3D)
+    # print(mol3D.eq_grps_sorted)
+    # cull_equal_bonds(mol3D)
+    # for b in mol3D.bonds:
+    #     print(b, mol3D.bonds[b].get("force_constant"))

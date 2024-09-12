@@ -37,3 +37,11 @@ src/learning_curves.png
 src/old_feat.py
 src/synclist
 src/pre_cull_nbonds
+src/atb_parted
+src/20k_mean.py
+src/debug_gnn.py
+src/distributed_training.py
+src/draw.py
+src/haha.html
+src/keyring.deb
+src/plot.py
