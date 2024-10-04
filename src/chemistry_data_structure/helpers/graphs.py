@@ -1,4 +1,6 @@
 import statistics
+import pickle
+import json
 from typing import List, Tuple, Callable, Sequence, Set
 
 from networkx import Graph
@@ -66,6 +68,47 @@ def cull_equal_bonds(mol: Molecule3D, aggregator="mean", graph=False):
             for (rm1, rm2) in v[1:]:
                 mol.remove_bond(rm1, rm2)
 
+def return_fdb_bond_ids(file, X_list=None, Y_list=None):
+    fdb_dict = None
+    with open(f"fdb/{file}", "r") as fh:
+        fdb_dict = json.load(fh)
+
+    fdb_bonds = []
+    for k, v in fdb_dict['atom_mappings'].items():
+        # qm_data = load_func(k)
+        # mol = mol3D_func(qm_data, net_charge=int(charge), name=k)
+        for i in v:
+            fdb_bonds.append((k, (str(i['1']-1), str(i['2']-1))))
+
+        # if len(v) > 1:
+        #     print(k, v)
+        #     raise ValueError('Fragment has more than 1 atom mapping')
+        # else:
+        #     fdb_bonds.append((k, (str(v[0]['1']-1), str(v[0]['2']-1))))
+
+    list_idx = []
+    mean_fc = []
+    if X_list is not None and Y_list is not None:
+        for id, v in enumerate(X_list):
+            for i, (j, k) in fdb_bonds:
+                # see old_feat for the structure of X_list
+                if (v[0] == i and v[1] == int(j) and v[8] == int(k))    \
+                    or (v[0] == i and v[1] == int(k) and v[8] == int(j)):
+                    mean_fc.append(Y_list[id])
+                    list_idx.append(id)
+        try:
+            mean_fc = statistics.mean(mean_fc)
+        # fdb data includes molecules not in hessian_data
+        except statistics.StatisticsError:
+            pass
+        
+        if mean_fc:
+            Y_list[list_idx[0]] = mean_fc
+            # for id in list_idx[1:]:
+            #     X_list.pop(id)
+            #     Y_list.pop(id)
+            return list_idx[1:]
+        
 def are_atoms_equivalent(node_1: _Atom, node_2: _Atom) -> bool:
     return node_1['element'] == node_2['element'] #and node_1['non_bonded_electrons'] == node_2['non_bonded_electrons']
 

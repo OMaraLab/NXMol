@@ -1,4 +1,6 @@
+import numpy as np
 import pickle
+import torch
 import torch.nn as tnn
 import dgl
 import dgl.nn as nn
@@ -97,17 +99,62 @@ class atbDataset(DGLDataset):
             force_reload=force_reload,
             verbose=verbose,
         )
-        tmp = None
-        self.graphs = read_from_file(tmp, "./graphs_mean_processed.pickle")
+
+    def assign_data_to_graphs(self, id_series, data_type=None):
+        if data_type == "node":
+            id_series = self.molID_ndata
+        elif data_type == "edge_data" or data_type == "edge_score":
+            id_series = self.e_label
+        groups = []
+        current_group = (id_series[0], 0, 1)
+        for i in range(1, len(id_series)):
+            if id_series[i] == current_group[0]:
+                current_group = (current_group[0], current_group[1], current_group[2] + 1)
+            else:
+                groups.append(current_group)
+                current_group = (id_series[i], i, 1)
+        groups.append(current_group)
+        
+        for idx, x in enumerate(self.sorted_molID):
+            for y in groups:
+                if str(x) == y[0]:
+                    if data_type == "node":
+                        self.graphs[str(x)].ndata['h'] = torch.from_numpy(self.
+                                                norm_n_df[y[1] : (y[1] + y[2])]
+                                                            .astype('float32'))
+                    elif data_type == "edge_data":
+                        self.graphs[str(x)].edata['e'] = torch.from_numpy(self.
+                                                norm_e_star[y[1] : (y[1] + y[2])]
+                                                            .astype('float32'))
+                    elif data_type == "edge_score":
+                        self.graphs[str(x)].edata['score'] = torch.from_numpy(
+                                                                  np.array(self.
+                                                  e_score[y[1] : (y[1] + y[2])])
+                                                            .astype('float32'))
+                    else:
+                        raise ValueError("data_type must be either 'node' or 'edge'")
 
     def process(self):
-        pass
+        tmp = None
+        self.norm_n_df = read_from_file(tmp, "./graph_norm_n_df.pickle")
+        self.norm_e_star = read_from_file(tmp, "./graph_norm_e_star.pickle")
+        self.e_score = read_from_file(tmp, "./graph_e_score.pickle")
+        self.molID_ndata = read_from_file(tmp, "./graph_molID_ndata.pickle")
+        self.e_label = read_from_file(tmp, "./graph_e_label_star.pickle")
+
+        self.graphs = read_from_file(tmp, "./graphs_mean.pickle")
+        self.sorted_molID = read_from_file(tmp, "./sorted_keys.pickle")
+
+        self.assign_data_to_graphs(self.molID_ndata, data_type="node")
+        self.assign_data_to_graphs(self.e_label, data_type="edge_data")
+        self.assign_data_to_graphs(self.e_label, data_type="edge_score")
 
     def __len__(self):
         return len(self.graphs.keys())
 
     def __getitem__(self, idx):
-        return self.graphs.items()[idx][1]
+        # return self.graphs.items()[idx][1]
+        return list(self.graphs.values())[idx]
 
 
 import torch.distributed as dist
@@ -138,7 +185,7 @@ from dgl.data import split_dataset
 from dgl.dataloading import GraphDataLoader
 
 
-def get_dataloaders(dataset, seed, batch_size=32):
+def get_dataloaders(dataset, seed, batch_size=64):
     # Use a 80:10:10 train-val-test split
     train_set, val_set, test_set = split_dataset(
         dataset, frac_list=[0.8, 0.1, 0.1], shuffle=True, random_state=seed
@@ -241,19 +288,36 @@ def init_model(seed, device):
 # Define the model evaluation function as in the single-GPU setting.
 #
 
+def yus(model, dataloader, device):
+    model.eval()
+
+    total_loss = []
+    batched_graph = dgl.batch([x for x in dataloader])
+    batched_labels = batched_graph.edata["score"]
+
+    batched_graph = batched_graph.to(device)
+    batched_labels = batched_labels.to(device)
+    feats = batched_graph.ndata['h']
+    with torch.no_grad():
+        pred = model(batched_graph, feats)
+    total_loss = torch.abs(pred[:,0] - batched_labels)
+
+    return total_loss
+
 
 def my_evaluate(model, dataloader, device):
     model.eval()
 
     total_loss = 0
+    batched_graph = dgl.batch([x for x in dataloader])
+    batched_labels = batched_graph.edata["score"]
 
-    for bg, labels in dataloader:
-        bg = bg.to(device)
-        labels = labels.to(device)
-        feats = bg.ndata.pop("h")
-        with torch.no_grad():
-            pred = model(bg, feats)
-        total_loss += abs(pred - labels).mean()
+    batched_graph = batched_graph.to(device)
+    batched_labels = batched_labels.to(device)
+    feats = batched_graph.ndata['h']
+    with torch.no_grad():
+        pred = model(batched_graph, feats)
+    total_loss += torch.abs(pred[:,0] - batched_labels).mean()
 
     return total_loss
 
@@ -298,7 +362,7 @@ def evaluate(model, dataloader, device):
 from torch.optim import Adam
 
 
-def main(rank, world_size, dataset, seed=0):
+def main(rank, world_size, dataset, seed=0, read=False):
     init_process_group(world_size, rank)
     if torch.cuda.is_available():
         device = torch.device("cuda:{:d}".format(rank))
@@ -308,37 +372,49 @@ def main(rank, world_size, dataset, seed=0):
 
     model = init_model(seed, device)
     optimizer = Adam(model.parameters(), lr=0.01)
+    
+    if read:
+        checkpoint = torch.load(read)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch_loaded = checkpoint['epoch']
 
     train_loader, val_loader, test_loader = get_dataloaders(dataset, seed)
-    for epoch in range(5):
+    for epoch in range(5000000):
         model.train()
         # The line below ensures all processes use a different
         # random ordering in data loading for each epoch.
-        train_loader.set_epoch(epoch)
+        # train_loader.set_epoch(epoch)
 
         total_loss = 0
-        batched_graph = dgl.batch(x for x in train_loader)
+        batched_graph = dgl.batch([x for x in train_loader])
         batched_labels = batched_graph.edata["score"]
 
         # for bg, labels in train_loader:
         batched_graph = batched_graph.to(device)
         batched_labels = batched_labels.to(device)
-        feats = batched_graph.ndata.pop("h")
+        feats = batched_graph.ndata['h']
         pred = model(batched_graph, feats)
 
-        loss = abs(pred - batched_labels).mean()
+        loss = torch.abs(pred[:,0] - batched_labels).mean()
         total_loss += loss.cpu().item()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
+        if read == False:
+            print(epoch)
+        else:
+            print(epoch + epoch_loaded)
         print("Loss: {:.4f}".format(total_loss))
-
-        if epoch % 1000 == 0:
-            save_model(epoch, model, optimizer, total_loss)
 
         val_acc = my_evaluate(model, val_loader, device)
         print("Val acc: {:.4f}".format(val_acc))
+
+        if epoch % 5000 == 0:
+            save_model(epoch + epoch_loaded, model, optimizer, total_loss)
+            test_acc = my_evaluate(model, test_loader, device)
+            print("Test acc: {:.4f}".format(test_acc))
 
     test_acc = my_evaluate(model, test_loader, device)
     print("Test acc: {:.4f}".format(test_acc))
@@ -352,13 +428,14 @@ def main(rank, world_size, dataset, seed=0):
 
 if __name__ == "__main__":
     import torch.multiprocessing as mp
+    mp.set_sharing_strategy("file_system")
 
     device = torch.device("cuda:0")
     dataset = atbDataset()
-
+    
     # from dgl.data import GINDataset
     # dataset = GINDataset(name='IMDBBINARY', self_loop=False)
-    num_gpus = 1
+    num_gpus = 2
     procs = []
     proc = mp.spawn(main, args=(num_gpus, dataset), nprocs=num_gpus)
 # Thumbnail credits: DGL

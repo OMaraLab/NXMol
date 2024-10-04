@@ -57,6 +57,10 @@ if __name__ == "__main__":
         for idx, row in enumerate(data):
             charges.append((row[0], row[1]))
 
+    print()
+    with open("charges.pickle", "wb") as handle:
+        pickle.dump(charges, handle)
+
     graphs = {}
     graph_ndatas = {}
     graph_edatas = {}
