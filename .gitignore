@@ -45,3 +45,5 @@ src/draw.py
 src/haha.html
 src/keyring.deb
 src/plot.py
+src/fdb
+req.txt
