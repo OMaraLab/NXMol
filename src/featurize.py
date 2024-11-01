@@ -33,11 +33,12 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
         print()
 
 def load_qm_data(molid: str):
-    for dirpath, dirname, filename in os.walk("hessian_data"):
-        if dirpath == f"hessian_data/{molid}":
+    for dirpath, dirname, filename in os.walk(
+        "/home/yaofu/data/atb_fc/NXMol/src/hessian_data"):
+        if dirpath == f"/home/yaofu/data/atb_fc/NXMol/src/hessian_data/{molid}":
             with open(f"{dirpath}/{filename[0]}", "rb") as fh:
                 return pickle.load(fh)
-
+    raise FileNotFoundError(f"Could not find {molid} in hessian_data")
 
 def load_qm_data_small(molid: str):
     with open(

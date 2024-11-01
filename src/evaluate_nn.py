@@ -28,12 +28,16 @@ if __name__ == "__main__":
     )
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    dataset = atbDataset()
-    train_set, val_set, test_set = split_dataset(dataset, shuffle=True, random_state=0)
-    test_loader = GraphDataLoader(test_set, batch_size=32)
-    batched_graph_old = dgl.batch([x for x in test_loader])
-    batched_graph = dgl.batch([x for x in test_loader])
-    batched_labels = batched_graph.edata["score"]
+    # dataset = atbDataset()
+    # train_set, val_set, test_set = split_dataset(dataset, shuffle=True, random_state=0)
+    # test_loader = GraphDataLoader(test_set, batch_size=32)
+    # batched_graph_old = dgl.batch([x for x in test_loader])
+    # batched_graph = dgl.batch([x for x in test_loader])
+    # batched_labels = batched_graph.edata["score"]
+
+    batched_graph = pickle.load(open("test_batched_graph.pickle", "rb"))
+    batched_graph_old = pickle.load(open("test_batched_graph.pickle", "rb")) 
+    batched_labels = pickle.load(open("test_batched_labels.pickle", "rb"))
     total_loss = 0
     pred = model(batched_graph, batched_graph.ndata["h"])
     total_loss = torch.abs(pred[:, 0] - batched_labels)
