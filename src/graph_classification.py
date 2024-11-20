@@ -137,10 +137,10 @@ class atbDataset(DGLDataset):
     def process(self):
         tmp = None
         self.norm_n_df = read_from_file(tmp, "./graph_norm_n_df.pickle")
-        self.norm_e_star = read_from_file(tmp, "./graph_norm_e_star.pickle")
-        self.e_score = read_from_file(tmp, "./graph_e_score.pickle")
+        self.norm_e_star = read_from_file(tmp, "./fdb_norm_e_star.pickle")
+        self.e_score = read_from_file(tmp, "./fdb_e_score.pickle")
         self.molID_ndata = read_from_file(tmp, "./graph_molID_ndata.pickle")
-        self.e_label = read_from_file(tmp, "./graph_e_label_star.pickle")
+        self.e_label = read_from_file(tmp, "./fdb_e_label_star.pickle")
 
         self.graphs = read_from_file(tmp, "./graphs_mean.pickle")
         self.sorted_molID = read_from_file(tmp, "./sorted_keys.pickle")

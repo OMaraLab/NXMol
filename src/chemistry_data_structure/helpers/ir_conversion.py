@@ -1,14 +1,50 @@
+import os
+import sys
 import json
 import random
 from math import sqrt
+
+from chemical_equivalence.calcChemEquivalency import Exception_Searching_Function
 from chemistry_data_structure.helpers.chem import MASS
 from chemistry_data_structure.parsing.hessian_analysis import (
     cal_stretching,
     cal_eigen_matrix,
 )
+from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecule3D
 from featurize import load_qm_data, printProgressBar
 from scipy.constants import pi, c
 
+
+def load_fdb_data(fdb_id):
+    fdb_fn = json.load(
+    open(f"/home/yaofu/data/atb_fc/NXMol/src/fbd/{fdb_id}.json", "r"))
+    return fdb_fn
+
+def suppress_output(func):
+    def wrapper(*args, **kwargs):
+        # Save the original file descriptors
+        original_stdout_fd = os.dup(1)
+        original_stderr_fd = os.dup(2)
+        
+        try:
+            # Open /dev/null and redirect stdout and stderr
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, 1)  # Redirect stdout to /dev/null
+            os.dup2(devnull, 2)  # Redirect stderr to /dev/null
+            
+            return func(*args, **kwargs)
+        
+        finally:
+            # Restore the original file descriptors
+            os.dup2(original_stdout_fd, 1)
+            os.dup2(original_stderr_fd, 2)
+            
+            # Close the duplicated file descriptors
+            os.close(original_stdout_fd)
+            os.close(original_stderr_fd)
+            os.close(devnull)
+            
+    return wrapper
 
 def wavenumber_to_gromacs_fc(
     wavenumber,
@@ -51,11 +87,12 @@ def wavenumber_to_gromacs_fc(
         return wavenumber
 
 
-def get_wavenumber_from_hessian_FDB(
-    fdb_id, exclude=None, len_exclude=None, bond_order_exclude=None
+def get_distr_from_hessian_FDB(
+    fdb_id, wave=False, exclude=None, len_exclude=None, bond_order_exclude=None
 ):
     """
-    Find the Hessian-equivalent wavenumbers for all bonds in a FDB match.
+    Find the Hessian force constant (Gromacs units) for all bonds in a FDB match,
+    or the equivalent wavenumbers.
     """
     fdb_fn = json.load(
         open(f"/home/yaofu/data/atb_fc/NXMol/src/fbd/{fdb_id}.json", "r")
@@ -64,7 +101,7 @@ def get_wavenumber_from_hessian_FDB(
     for x in fdb_fn["atom_mappings"]:
         bonds[x] = [(i["1"], i["2"]) for i in fdb_fn["atom_mappings"][x]]
 
-    wavenumbers = []
+    distr = []
     ref = None
     for idx, (k, v) in enumerate(bonds.items()):
         try:
@@ -101,10 +138,47 @@ def get_wavenumber_from_hessian_FDB(
                 qm_data["primary_axis_coords"], qm_data["hessian"]
             )
             fc = cal_stretching((i, j), umatrix, eigmatrix)
-            wavenumber = wavenumber_to_gromacs_fc(
-                None, qm_data["type"][i], qm_data["type"][j], True, fc
-            )
-            wavenumbers.append(wavenumber)
-        printProgressBar(idx, len(bonds.items()))
-    wavenumbers.append(ref)
-    return wavenumbers
+            if wave==True:
+                wavenumber = wavenumber_to_gromacs_fc(
+                    None, qm_data["type"][i], qm_data["type"][j], True, fc
+                )
+                distr.append(wavenumber)
+            else:
+                distr.append(fc)
+        # printProgressBar(idx, len(bonds.items()))
+    distr.append(ref)
+    return distr
+
+def get_kv_pair_from_FDB(fdb_id):
+    fdb_fn = json.load(
+        open(f"/home/yaofu/data/atb_fc/NXMol/src/fbd/{fdb_id}.json", "r")
+    )
+    bonds = {}
+    for x in fdb_fn["atom_mappings"]:
+        bonds[x] = [(i["1"], i["2"]) for i in fdb_fn["atom_mappings"][x]]
+    return bonds
+
+def get_molecules_in_FDB_fragment(fdb_id, charge_table=None, id_table=None):
+    bonds = get_kv_pair_from_FDB(fdb_id)
+
+    assert charge_table, "Charge table must be provided if not getting index only"
+    for k, v in bonds.items():
+        if id_table:
+            if k not in id_table:
+                continue
+        try:
+            qm_data = load_qm_data(k)
+            make_silent_mol3D = suppress_output(ATB_QMData_to_Molecule3D)
+            mol = make_silent_mol3D(
+            qm_data, net_charge=int(charge_table[k]), name=k
+        )
+        except (FileNotFoundError, Exception):
+            continue
+        yield mol, v
+
+def get_molIDs_in_FDB_fragment(*args):
+    molIDs = []
+    for x in args:
+        fdb_fn = load_fdb_data(x)
+        molIDs.extend(fdb_fn["atom_mappings"].keys())
+    return molIDs
