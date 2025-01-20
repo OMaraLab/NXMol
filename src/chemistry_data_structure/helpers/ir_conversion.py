@@ -80,7 +80,10 @@ def wavenumber_to_gromacs_fc(
         assert gmx_fc is not None, "GROMACS force constant must be provided"
         conv_factor = 1e-21
         fc_pre_conversion = gmx_fc / conv_factor
-        angular_frequency = sqrt(fc_pre_conversion / reduced_mass)
+        try:
+            angular_frequency = sqrt(fc_pre_conversion / reduced_mass)
+        except ValueError:
+            return None
         wavenumber = angular_frequency / (2 * pi * c * 100)
 
         # return sqrt(fc_pre_conversion / reduced_mass) / (2 * pi * c * 100)

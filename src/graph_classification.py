@@ -136,13 +136,13 @@ class atbDataset(DGLDataset):
 
     def process(self):
         tmp = None
-        self.norm_n_df = read_from_file(tmp, "./graph_norm_n_df.pickle")
-        self.norm_e_star = read_from_file(tmp, "./fdb_norm_e_star.pickle")
-        self.e_score = read_from_file(tmp, "./fdb_e_score.pickle")
-        self.molID_ndata = read_from_file(tmp, "./graph_molID_ndata.pickle")
-        self.e_label = read_from_file(tmp, "./fdb_e_label_star.pickle")
+        self.norm_n_df = read_from_file(tmp, f"{self.raw_dir}/{self.raw_dir}_norm_n_df.pickle")
+        self.norm_e_star = read_from_file(tmp, f"{self.raw_dir}/{self.raw_dir}_norm_e_star.pickle")
+        self.e_score = read_from_file(tmp, f"{self.raw_dir}/{self.raw_dir}_e_score.pickle")
+        self.molID_ndata = read_from_file(tmp, f"{self.raw_dir}/{self.raw_dir}_molID_ndata.pickle")
+        self.e_label = read_from_file(tmp, f"{self.raw_dir}/{self.raw_dir}_e_label_star.pickle")
 
-        self.graphs = read_from_file(tmp, "./graphs_mean.pickle")
+        self.graphs = read_from_file(tmp, "./graphs.pickle")
         self.sorted_molID = read_from_file(tmp, "./sorted_keys.pickle")
 
         self.assign_data_to_graphs(self.molID_ndata, data_type="node")
@@ -191,8 +191,7 @@ def get_dataloaders(dataset, seed, batch_size=64):
         dataset, frac_list=[0.8, 0.1, 0.1], shuffle=True, random_state=seed
     )
     train_loader = GraphDataLoader(
-        train_set, use_ddp=True, batch_size=batch_size, shuffle=True
-    )
+        train_set, use_ddp=True, batch_size=batch_size, shuffle=True)
     val_loader = GraphDataLoader(val_set, batch_size=batch_size)
     test_loader = GraphDataLoader(test_set, batch_size=batch_size)
 
@@ -288,22 +287,6 @@ def init_model(seed, device):
 # Define the model evaluation function as in the single-GPU setting.
 #
 
-def yus(model, dataloader, device):
-    model.eval()
-
-    total_loss = []
-    batched_graph = dgl.batch([x for x in dataloader])
-    batched_labels = batched_graph.edata["score"]
-
-    batched_graph = batched_graph.to(device)
-    batched_labels = batched_labels.to(device)
-    feats = batched_graph.ndata['h']
-    with torch.no_grad():
-        pred = model(batched_graph, feats)
-    total_loss = torch.abs(pred[:,0] - batched_labels)
-
-    return total_loss
-
 
 def my_evaluate(model, dataloader, device):
     model.eval()
@@ -331,7 +314,7 @@ def save_model(epoch, model, optimizer, loss):
             "optimizer_state_dict": optimizer.state_dict(),
             "loss": loss,
         },
-        f"{epoch_str}_model_state.pt",
+        f"{epoch_str}_model_state_mean.pt",
     )
 
 
@@ -373,13 +356,19 @@ def main(rank, world_size, dataset, seed=0, read=False):
     model = init_model(seed, device)
     optimizer = Adam(model.parameters(), lr=0.01)
     
+    epoch_loaded = 0
     if read:
-        checkpoint = torch.load(read)
+        checkpoint = torch.load(read, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         epoch_loaded = checkpoint['epoch']
 
-    train_loader, val_loader, test_loader = get_dataloaders(dataset, seed)
+    train_loader, val_loader, test_loader = get_dataloaders(dataset, seed, 512)
+
+    pickle.dump(train_loader, open('train_loader.pickle', 'wb'))
+    pickle.dump(val_loader, open('val_loader.pickle', 'wb'))
+    pickle.dump(test_loader, open('test_loader.pickle', 'wb'))
+
     for epoch in range(5000000):
         model.train()
         # The line below ensures all processes use a different
@@ -406,6 +395,7 @@ def main(rank, world_size, dataset, seed=0, read=False):
             print(epoch)
         else:
             print(epoch + epoch_loaded)
+            print(device)
         print("Loss: {:.4f}".format(total_loss))
 
         val_acc = my_evaluate(model, val_loader, device)
@@ -430,13 +420,13 @@ if __name__ == "__main__":
     import torch.multiprocessing as mp
     mp.set_sharing_strategy("file_system")
 
-    device = torch.device("cuda:0")
+    device = torch.device("cuda")
     dataset = atbDataset()
     
     # from dgl.data import GINDataset
     # dataset = GINDataset(name='IMDBBINARY', self_loop=False)
-    num_gpus = 2
+    num_gpus = 4
     procs = []
-    proc = mp.spawn(main, args=(num_gpus, dataset), nprocs=num_gpus)
+    proc = mp.spawn(main, args=(num_gpus, dataset, 1, "65000_model_state_mean.pt"), nprocs=num_gpus)
 # Thumbnail credits: DGL
 # sphinx_gallery_thumbnail_path = '_static/blitz_5_graph_classification.png'

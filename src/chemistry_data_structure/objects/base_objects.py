@@ -1202,7 +1202,7 @@ class _2DChemicalObj:
         """
         nx.write_gml(self.graph, fpath, stringizer=nx.readwrite.gml.literal_stringizer)
 
-    def BFS_edge(self, node1: str, node2: str, depth: int):
+    def BFS_edge(self, node1: str, node2: str, depth: int, hybridisation: bool = False):
         """
         Breadth-First search from an EDGE to return a ndarray of the nodes and
         edges in a given neighbourhood size.
@@ -1217,7 +1217,7 @@ class _2DChemicalObj:
         assert (node1, node2) in self.bonds or (node2, node1) in self.bonds
 
         visited_nei = set()
-        node1_nei, node2_nei = str(), str()
+        node1_nei, node2_nei = [], []
         for x in (node1, node2):
             idx_q = queue.Queue()
             visited_nei.add(x)
@@ -1245,12 +1245,27 @@ class _2DChemicalObj:
             #     assert (node1 == x.split(" ")[1]) or (node2 == x.split(" ")[1])
             if " " in y:
                 if node1 == y.split(" ")[1]:
-                    node1_nei += self.atoms[y.split(" ")[0]].element
+                    node1_nei.append((self.atoms[y.split(" ")[0]].element, 
+                                     self.calcNumBonds(y.split(" ")[0])))
                 elif node2 == y.split(" ")[1]:
-                    node2_nei += self.atoms[y.split(" ")[0]].element
+                    node2_nei.append((self.atoms[y.split(" ")[0]].element, 
+                                     self.calcNumBonds(y.split(" ")[0])))
         # return 
-        return [''.join(sorted(z)) for z in [node1_nei, node2_nei]]
+        if hybridisation == False:
+            return [''.join(sorted([t[0] for t in z])) for z in [node1_nei, node2_nei]]
+        else:
+            return (''.join([''.join(str(y)) 
+                    for x in sorted(node1_nei, key=lambda x: (x[0], x[1])) for y in x]),
+                    ''.join([''.join(str(y)) 
+                    for x in sorted(node2_nei, key=lambda x: (x[0], x[1])) for y in x]),
+                    f"{self.atoms[node1].element}{node1}_{self.atoms[node2].element}{node2}_{self.name}")
 
+    def calcNumBonds(self, atomId: str):
+        n_bonds = 0
+        for i, j in self.bonds.keys():
+            if (i == atomId) or (j == atomId):
+                n_bonds += 1
+        return n_bonds
 
             
             
