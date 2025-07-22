@@ -869,9 +869,7 @@ class _2DChemicalObj:
             ] == bond_order, "Constraint bond {0} == {1}".format(bond, bond_order)
 
         for atom, (bond_1, bond_2) in non_allene_atoms.items():
-            new_allene_switch = LpVariable(
-                "A_{i}".format(i=atom), 0, 1, LpBinary
-            )
+            new_allene_switch = LpVariable("A_{i}".format(i=atom), 0, 1, LpBinary)
             problem += (
                 2 * bond_orders[bond_1] - bond_orders[bond_2] + 4 * new_allene_switch
                 >= 3
@@ -1210,8 +1208,11 @@ class _2DChemicalObj:
         in question
         :param node2: the other node invovled in the covalent bond
         :param depth: the depth of the search (degree of neighbourhood)
-        :return: an ndarray that contains the elements and edges in the
-        {depth}th-degree neighbourhood of the covalent bond
+        :param hybridisation: see return value
+        :return: if hybridisation = False, a list that contains the atoms in {depth}th-degree
+        neighbourhood of node1 and node2, respectively. If hybridisation = True, a tuple of the form
+        (node1_nei, node2_nei, node1_node2_molID), e.g., ('C4C4C4H1', 'C4H1H1H1', 'C1_C2_8') is the
+        return value for the bond between C1 and C2 in molID 8.
         """
 
         assert (node1, node2) in self.bonds or (node2, node1) in self.bonds
@@ -1245,20 +1246,40 @@ class _2DChemicalObj:
             #     assert (node1 == x.split(" ")[1]) or (node2 == x.split(" ")[1])
             if " " in y:
                 if node1 == y.split(" ")[1]:
-                    node1_nei.append((self.atoms[y.split(" ")[0]].element, 
-                                     self.calcNumBonds(y.split(" ")[0])))
+                    node1_nei.append(
+                        (
+                            self.atoms[y.split(" ")[0]].element,
+                            self.calcNumBonds(y.split(" ")[0]),
+                        )
+                    )
                 elif node2 == y.split(" ")[1]:
-                    node2_nei.append((self.atoms[y.split(" ")[0]].element, 
-                                     self.calcNumBonds(y.split(" ")[0])))
-        # return 
+                    node2_nei.append(
+                        (
+                            self.atoms[y.split(" ")[0]].element,
+                            self.calcNumBonds(y.split(" ")[0]),
+                        )
+                    )
+        # return
         if hybridisation == False:
-            return [''.join(sorted([t[0] for t in z])) for z in [node1_nei, node2_nei]]
+            return ["".join(sorted([t[0] for t in z])) for z in [node1_nei, node2_nei]]
         else:
-            return (''.join([''.join(str(y)) 
-                    for x in sorted(node1_nei, key=lambda x: (x[0], x[1])) for y in x]),
-                    ''.join([''.join(str(y)) 
-                    for x in sorted(node2_nei, key=lambda x: (x[0], x[1])) for y in x]),
-                    f"{self.atoms[node1].element}{node1}_{self.atoms[node2].element}{node2}_{self.name}")
+            return (
+                "".join(
+                    [
+                        "".join(str(y))
+                        for x in sorted(node1_nei, key=lambda x: (x[0], x[1]))
+                        for y in x
+                    ]
+                ),
+                "".join(
+                    [
+                        "".join(str(y))
+                        for x in sorted(node2_nei, key=lambda x: (x[0], x[1]))
+                        for y in x
+                    ]
+                ),
+                f"{self.atoms[node1].element}{node1}_{self.atoms[node2].element}{node2}_{self.name}",
+            )
 
     def calcNumBonds(self, atomId: str):
         n_bonds = 0
@@ -1267,8 +1288,6 @@ class _2DChemicalObj:
                 n_bonds += 1
         return n_bonds
 
-            
-            
 
 class _3DChemicalObj(_2DChemicalObj):
     def __init__(self, atoms, bonds, name: str = "", net_charge=None):

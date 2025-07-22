@@ -57,13 +57,13 @@ def cull_equal_bonds(mol: Molecule3D, aggregator="mean", graph=False):
             if aggregator == "mean":
                 mean_fc = statistics.mean([mol.bonds[(i, j)].get("force_constant")
                                                             for (i, j) in v])
-                for eq_bonds in v:
-                    mol.bonds[eq_bonds].update(force_constant=mean_fc)
+                for eq_bond in v:
+                    mol.bonds[eq_bond].update(force_constant=mean_fc)
             elif aggregator == "median":
-                mean_fc = statistics.mean([mol.bonds[(i, j)].get("force_constant")
+                median_fc = statistics.median([mol.bonds[(i, j)].get("force_constant")
                                                             for (i, j) in v])
                 for eq_bonds in v:
-                    mol.bonds[eq_bonds].update(force_constant=mean_fc)
+                    mol.bonds[eq_bonds].update(force_constant=median_fc)
         if not graph:
             for (rm1, rm2) in v[1:]:
                 mol.remove_bond(rm1, rm2)
