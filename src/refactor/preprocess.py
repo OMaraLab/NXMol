@@ -1,7 +1,8 @@
 import pickle
+from collections import defaultdict
 
+import dgl
 import torch
-import dgl.data
 import pandas as pd
 from refactor.utils import progress_bar
 from sklearn.preprocessing import MinMaxScaler
@@ -9,7 +10,7 @@ from sklearn.preprocessing import MinMaxScaler
 from refactor.constants import nodeFeatures as nf
 
 
-class graphDataset(dgl.data.DGLDataset):
+class preprocessDataset:
     def __init__(self, dataset_prefix, dataset_path, overwrite_with=None):
         self.ndatas = pickle.load(
             open(f"{dataset_path}/{dataset_prefix}_graph_ndatas.pickle", "rb")
@@ -21,14 +22,8 @@ class graphDataset(dgl.data.DGLDataset):
             open(f"{dataset_path}/{dataset_prefix}_graphs.pickle", "rb")
         )
         self.overwrite_with = overwrite_with
+        self.dataset_prefix = dataset_prefix
         self.dataset_path = dataset_path
-        super().__init__(name=f"{dataset_prefix}_graph_dataset")
-
-    def __len__(self):
-        return len(self.graphs.keys())
-
-    def __getitem__(self, idx):
-        return list(self.graphs.values())[idx]
 
     def _overwrite_feature_vectors(
         self, new_dataset_prefix, new_dataset_path, update_all=False
@@ -152,6 +147,18 @@ class graphDataset(dgl.data.DGLDataset):
     def _normalize_features(self, features):
         return MinMaxScaler().fit_transform(features)
 
+    def _save_graphs(self):
+        graph_list = []
+        molID_list = []
+        for molID in self.graphs:
+            graph_list.append(self.graphs[molID])
+            molID_list.append(int(molID))
+        dgl.save_graphs(
+            f"{self.dataset_path}/graphs/{self.dataset_prefix}_complete_graphs.bin",
+            graph_list,
+            {"names": torch.tensor(molID_list)}
+        )
+
     def process(
         self,
         update_all=False,
@@ -184,8 +191,6 @@ class graphDataset(dgl.data.DGLDataset):
                         ndatas_array[ndata_molID[1] : (ndata_molID[1] + ndata_molID[2])]
                     ).to(torch.float32)
 
-        del (all_ndatas, ndatas_df, ndatas_index_list, ndatas_array)
-
         edatas_df = pd.DataFrame(
             all_edatas, columns=["bond_length", "bond_order", "molID_fc_pair"]
         )
@@ -210,10 +215,4 @@ class graphDataset(dgl.data.DGLDataset):
                         ]
                     ).to(torch.float32)
                     break
-        del (
-            all_edatas,
-            edatas_df,
-            edatas_index_list,
-            edatas_feat_array,
-            edatas_score_array,
-        )
+        self._save_graphs()
