@@ -1,3 +1,4 @@
+import os
 import pickle
 
 import dgl
@@ -11,7 +12,29 @@ import torch.nn.parallel as tnn_parallel
 from torch.distributed import init_process_group, destroy_process_group
 
 
-class EdgeFeatureSAGEConv(tnn.Module):
+class graphDataset(dgl.data.DGLDataset):
+    def __init__(self, name, path, url=None):
+        self.path = path
+        super().__init__(name=name, url=url)
+
+    def process(self):
+        graphs, self.molIDs = dgl.load_graphs(self.path)
+        assert len(graphs) == len(
+            self.molIDs["names"]
+        ), "Mismatch in number of graphs and molIDs"
+        self._num_graphs = len(graphs)
+        self.graphs = None
+        del graphs
+
+    def __getitem__(self, idx):
+        g, _ = dgl.load_graphs(self.path, [int(idx)])
+        return g[0]
+
+    def __len__(self):
+        return self._num_graphs
+
+
+class edgeFeatureSAGEConv(tnn.Module):
     def __init__(
         self,
         in_feats_node,
@@ -32,7 +55,6 @@ class EdgeFeatureSAGEConv(tnn.Module):
         self.node_dropout = tnn.Dropout(dropout_rate)
 
         predictor_input_dim = out_feats * 2
-        self.edge_predictor = tnn.Linear(predictor_input_dim, 1)
 
         self.edge_predictor_mlp = tnn.Sequential(
             tnn.Linear(predictor_input_dim, predictor_input_dim // 2),
@@ -79,7 +101,7 @@ class EdgeFeatureSAGEConv(tnn.Module):
             h_combined = torch.cat([h_self, h_neigh], dim=1)
 
             output_node_features = self.node_dropout(
-                tnn.ReLU(self.W_concat(h_combined))
+                tnn.functional.relu(self.W_concat(h_combined))
             )
             graph.ndata["h_out"] = output_node_features
 
@@ -87,7 +109,7 @@ class EdgeFeatureSAGEConv(tnn.Module):
                 combined_edge_input = torch.cat(
                     [edges.src["h_out"], edges.dst["h_out"]], dim=1
                 )
-                score = self.edge_predictor(combined_edge_input)
+                score = self.edge_predictor_mlp(combined_edge_input)
                 return {"score": score}
 
             graph.apply_edges(edge_score_func)
@@ -108,11 +130,19 @@ def get_dataloaders(dataset, seed, batch_size):
     return train_loader, val_loader, test_loader
 
 
-def init_model(dataset, seed, device):
+def init_model(graph, seed, device, load_path=None):
+    epoch_start = 0
     torch.manual_seed(seed)
-    model = EdgeFeatureSAGEConv(
-        dataset.ndata["h"].shape[1], dataset.edata["e"].shape[1], 64, "mean", 0.3
-    )
+    model = edgeFeatureSAGEConv(
+        graph.ndata["h"].shape[1], graph.edata["e"].shape[1], 64, "mean", 0.3
+    ).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    if load_path:
+        map_location = {'cuda:0': str(device)}
+        checkpoint = torch.load(load_path, map_location=map_location)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        epoch_start = int(checkpoint["epoch"])
     if device.type == "cpu":
         model = tnn_parallel.DistributedDataParallel(model)
     else:
@@ -120,7 +150,7 @@ def init_model(dataset, seed, device):
             model, device_ids=[device], output_device=device
         )
 
-    return model
+    return model, optimizer, epoch_start
 
 
 def evaluate(model, dataloader, device):
@@ -141,15 +171,16 @@ def evaluate(model, dataloader, device):
 
 
 def save_model(epoch, model, optimizer, loss, dataset_name):
+    os.makedirs("checkpoints", exist_ok=True)
     epoch = str(epoch)
     torch.save(
         {
             "epoch": epoch,
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": model.module.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "loss": loss,
         },
-        "./checkpoints/{}_epoch_{}.pt".format(dataset_name, epoch),
+        "checkpoints/{}_epoch_{}.pt".format(dataset_name, epoch),
     )
 
 
@@ -159,9 +190,10 @@ def main(
     dataset,
     seed,
     total_epoch,
-    load=None,
+    patience,
     save_dataset_name=None,
     save_freq=0,
+    load_path=None,
 ):
     init_process_group(
         backend="gloo",
@@ -170,25 +202,22 @@ def main(
         rank=rank,
     )
     if torch.cuda.is_available():
-        device = torch.device("cuda:{:d}".format(rank))
+        device = torch.device(f"cuda:{rank}")
         torch.cuda.set_device(device)
     else:
         device = torch.device("cpu")
 
-    model = init_model(dataset, seed, device)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    epoch_start = 0
-    if load:
-        checkpoint = torch.load(load, map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        epoch_start = checkpoint["epoch"]
+    best_val_loss = float("inf")
+    patience_counter = 0
+    patience_limit = patience
+    model, optimizer, epoch_start = init_model(dataset[0], seed, device, load_path)
 
     train_loader, val_loader, test_loader = get_dataloaders(
-        dataset, seed, batch_size=32
+        dataset, seed, batch_size=128
     )
     for epoch in range(total_epoch):
         model.train()
+        train_loader.set_epoch(epoch + epoch_start)
         total_loss = 0
         num_batches = 0
         for batch in train_loader:
@@ -205,11 +234,35 @@ def main(
             total_loss += loss.cpu().item()
             num_batches += 1
 
-        print(
-            f"Epoch: {epoch_start + epoch + 1}/{total_epoch}, Loss: {total_loss / num_batches:.4f}"
-        )
-        if save_freq and (epoch + 1) % save_freq == 0:
-            save_model(epoch + 1, model, optimizer, total_loss, save_dataset_name)
+        if rank == 0:
+            print(
+                f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Training loss: {total_loss / num_batches:.4f}"
+            )
+            if save_freq and (epoch + 1) % save_freq == 0:
+                save_model(epoch + 1, model, optimizer, total_loss, save_dataset_name)
+
+        # early stopping
+
+        with torch.no_grad():
+            val_loss = torch.tensor(evaluate(model, val_loader, device))
+            if world_size > 1:
+                torch.distributed.reduce(
+                    val_loss, dst=0, op=torch.distributed.ReduceOp.AVG
+                )
+        if rank == 0:
+            print(
+                f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Validation loss: {val_loss:.4f}"
+            )
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= patience_limit:
+                    print(
+                        f"Early stopping at epoch {epoch_start + epoch + 1}, best validation loss: {best_val_loss:.4f}"
+                    )
+                    break
 
     with torch.no_grad():
         train_loss = evaluate(model, train_loader, device)
@@ -219,5 +272,3 @@ def main(
     print(
         f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Test Loss: {test_loss:.4f}"
     )
-
-    destroy_process_group()
