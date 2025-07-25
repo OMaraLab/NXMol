@@ -244,7 +244,7 @@ def main(
         # early stopping
 
         with torch.no_grad():
-            val_loss = torch.tensor(evaluate(model, val_loader, device))
+            val_loss = torch.tensor(evaluate(model, val_loader, device), device=device)
             if world_size > 1:
                 torch.distributed.reduce(
                     val_loss, dst=0, op=torch.distributed.ReduceOp.AVG
