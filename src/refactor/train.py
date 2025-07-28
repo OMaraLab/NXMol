@@ -57,8 +57,10 @@ class messagePassingLayer(tnn.Module):
             self.reduce_func = dfn.sum("m", "h_neigh")
         elif self.aggregator_type == "max":
             self.reduce_func = dfn.max("m", "h_neigh")
-        elif self.aggregator_type = "pool":
-            self.mp_pool=tnn.Sequential(tnn.Linear(out_feats_node, out_feats_node), tnn.ReLU())
+        elif self.aggregator_type == "pool":
+            self.mp_pool = tnn.Sequential(
+                tnn.Linear(out_feats_node, out_feats_node), tnn.ReLU()
+            )
             self.reduce_func = dfn.max("m", "h_neigh")
 
     def forward(self, graph, node_features, edge_features):
@@ -82,7 +84,7 @@ class messagePassingLayer(tnn.Module):
                 tnn.functional.relu(self.W_concat(h_combined))
             )
             # L2 normalization
-            output_node_features = tnn.functional.normalize(output_node_features, p=2, dim=1)
+            # output_node_features = tnn.functional.normalize(output_node_features, p=2, dim=1)
 
             return output_node_features
 
@@ -95,7 +97,7 @@ class edgeFeatureSAGEConv(tnn.Module):
         hidden_feats_node,
         hidden_feats_edge,
         num_gnn_layers,
-        aggregator_type="mean",
+        aggregator_type="pool",
         dropout_rate=0.3,
     ):
         super().__init__()
@@ -165,7 +167,7 @@ def init_model(graph, seed, device, load_path=None):
     epoch_start = 0
     torch.manual_seed(seed)
     model = edgeFeatureSAGEConv(
-        graph.ndata["h"].shape[1], graph.edata["e"].shape[1], 512, 64, 2, "sum"
+        graph.ndata["h"].shape[1], graph.edata["e"].shape[1], 512, 64, 2, "pool"
     ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     if load_path:
@@ -184,7 +186,7 @@ def init_model(graph, seed, device, load_path=None):
     return model, optimizer, epoch_start
 
 
-def evaluate(model, dataloader, device):
+def evaluate(model, dataloader, device, percentage_error=False):
     model.eval()
     total_loss = 0
     num_batches = 0
@@ -196,6 +198,8 @@ def evaluate(model, dataloader, device):
         with torch.no_grad():
             predicted_scores = model(batched_graph, node_feats, edge_feats)
             loss = tnn.functional.l1_loss(predicted_scores[:, 0], batched_score)
+            if percentage_error:
+                loss = loss / batched_score.abs().mean()
         total_loss += loss.cpu().item()
         num_batches += 1
     return total_loss / num_batches
@@ -321,7 +325,7 @@ def main(
     with torch.no_grad():
         train_loss = evaluate(model, train_loader, device)
         val_loss = evaluate(model, val_loader, device)
-        test_loss = evaluate(model, test_loader, device)
+        test_loss = evaluate(model, test_loader, device, percentage_error=True)
 
     print(
         f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Test Loss: {test_loss:.4f}"
