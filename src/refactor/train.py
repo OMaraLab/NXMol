@@ -40,7 +40,7 @@ class messagePassingLayer(tnn.Module):
         in_feats_node,
         in_feats_edge,
         out_feats_node,
-        aggregator_type="sum",
+        aggregator_type="pool",
         dropout_rate=0.3,
     ):
         super().__init__()
@@ -57,6 +57,9 @@ class messagePassingLayer(tnn.Module):
             self.reduce_func = dfn.sum("m", "h_neigh")
         elif self.aggregator_type == "max":
             self.reduce_func = dfn.max("m", "h_neigh")
+        elif self.aggregator_type = "pool":
+            self.mp_pool=tnn.Sequential(tnn.Linear(out_feats_node, out_feats_node), tnn.ReLU())
+            self.reduce_func = dfn.max("m", "h_neigh")
 
     def forward(self, graph, node_features, edge_features):
         with graph.local_scope():
@@ -64,10 +67,12 @@ class messagePassingLayer(tnn.Module):
             graph.edata["e"] = edge_features
 
             def message_func(edges):
-                combined_features = torch.cat(
-                    [edges.src["h"], edges.data["e"]], dim=1
-                )
-                return {"m": self.W_msg(combined_features)}
+                combined_features = torch.cat([edges.src["h"], edges.data["e"]], dim=1)
+                msg = self.W_msg(combined_features)
+                if self.aggregator_type == "pool":
+                    msg_for_pool = self.mp_pool(msg)
+                    return {"m": msg_for_pool}
+                return {"m": msg}
 
             graph.update_all(message_func, self.reduce_func)
             h_neigh = graph.ndata["h_neigh"]
@@ -76,6 +81,9 @@ class messagePassingLayer(tnn.Module):
             output_node_features = self.node_dropout(
                 tnn.functional.relu(self.W_concat(h_combined))
             )
+            # L2 normalization
+            output_node_features = tnn.functional.normalize(output_node_features, p=2, dim=1)
+
             return output_node_features
 
 
@@ -263,7 +271,13 @@ def main(
                 f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Training loss: {total_loss / num_batches:.4f}"
             )
             if save_freq and (epoch + 1) % save_freq == 0:
-                save_model(epoch + 1, model, optimizer, total_loss, save_dataset_name)
+                save_model(
+                    epoch + 1,
+                    model,
+                    optimizer,
+                    total_loss / num_batches,
+                    save_dataset_name,
+                )
 
         # early stopping
 
@@ -286,8 +300,24 @@ def main(
                     print(
                         f"Early stopping at epoch {epoch_start + epoch + 1}, best validation loss: {best_val_loss:.4f}"
                     )
+                    if rank == 0:
+                        save_model(
+                            epoch_start + epoch + 1,
+                            model,
+                            optimizer,
+                            val_loss,
+                            save_dataset_name,
+                        )
                     break
 
+    if rank == 0:
+        save_model(
+            epoch_start + total_epoch,
+            model,
+            optimizer,
+            best_val_loss,
+            save_dataset_name,
+        )
     with torch.no_grad():
         train_loss = evaluate(model, train_loader, device)
         val_loss = evaluate(model, val_loader, device)
