@@ -153,11 +153,12 @@ class preprocessDataset:
         for molID in self.graphs:
             graph_list.append(self.graphs[molID])
             molID_list.append(int(molID))
-        dgl.save_graphs(
-            f"{self.dataset_path}/graphs/{self.dataset_prefix}_complete_graphs.bin",
-            graph_list,
-            {"names": torch.tensor(molID_list)}
+        fn = (
+            f"{self.dataset_path}/graphs/{self.dataset_prefix}_complete_graphs.bin"
+            if not self.overwrite_with
+            else f"{self.dataset_path}/graphs/{self.dataset_prefix}_overwrite_with_{self.overwrite_with}_complete_graphs.bin"
         )
+        dgl.save_graphs(fn, graph_list, {"names": torch.tensor(molID_list)})
 
     def process(
         self,

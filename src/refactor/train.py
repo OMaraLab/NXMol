@@ -34,48 +34,29 @@ class graphDataset(dgl.data.DGLDataset):
         return self._num_graphs
 
 
-class edgeFeatureSAGEConv(tnn.Module):
+class messagePassingLayer(tnn.Module):
     def __init__(
         self,
         in_feats_node,
         in_feats_edge,
-        out_feats,
-        aggregator_type="mean",
+        out_feats_node,
+        aggregator_type="sum",
         dropout_rate=0.3,
     ):
         super().__init__()
-
         self.aggregator_type = aggregator_type
 
-        self.W_msg = tnn.Linear(in_feats_node + in_feats_edge, out_feats)
-        self.W_self = tnn.Linear(in_feats_node, out_feats)  # For the self-loop feature
-        self.W_concat = tnn.Linear(
-            out_feats * 2, out_feats
-        )  # For the final concatenation and projection
+        self.W_msg = tnn.Linear(in_feats_node + in_feats_edge, out_feats_node)
+        self.W_self = tnn.Linear(in_feats_node, out_feats_node)
+        self.W_concat = tnn.Linear(out_feats_node * 2, out_feats_node)
         self.node_dropout = tnn.Dropout(dropout_rate)
 
-        predictor_input_dim = out_feats * 2
-
-        self.edge_predictor_mlp = tnn.Sequential(
-            tnn.Linear(predictor_input_dim, predictor_input_dim // 2),
-            tnn.ReLU(),
-            tnn.Dropout(dropout_rate),
-            tnn.Linear(predictor_input_dim // 2, 1),
-        )
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        tnn.init.xavier_uniform_(self.W_msg.weight)
-        tnn.init.zeros_(self.W_msg.bias)
-        tnn.init.xavier_uniform_(self.W_self.weight)
-        tnn.init.zeros_(self.W_self.bias)
-        tnn.init.xavier_uniform_(self.W_concat.weight)
-        tnn.init.zeros_(self.W_concat.bias)
-
-        for m in self.edge_predictor_mlp:
-            if isinstance(m, tnn.Linear):
-                tnn.init.xavier_uniform_(m.weight)
-                tnn.init.zeros_(m.bias)
+        if self.aggregator_type == "mean":
+            self.reduce_func = dfn.mean("m", "h_neigh")
+        elif self.aggregator_type == "sum":
+            self.reduce_func = dfn.sum("m", "h_neigh")
+        elif self.aggregator_type == "max":
+            self.reduce_func = dfn.max("m", "h_neigh")
 
     def forward(self, graph, node_features, edge_features):
         with graph.local_scope():
@@ -83,33 +64,75 @@ class edgeFeatureSAGEConv(tnn.Module):
             graph.edata["e"] = edge_features
 
             def message_func(edges):
-                combined_features = torch.cat([edges.src["h"], edges.data["e"]], dim=1)
+                combined_features = torch.cat(
+                    [edges.src["h"], edges.data["e"]], dim=1
+                )
                 return {"m": self.W_msg(combined_features)}
 
-            reduce_func = None
-            if self.aggregator_type == "mean":
-                reduce_func = dfn.mean("m", "h_neigh")
-            elif self.aggregator_type == "sum":
-                reduce_func = dfn.sum("m", "h_neigh")
-            elif self.aggregator_type == "max":
-                reduce_func = dfn.max("m", "h_neigh")
-
-            graph.update_all(message_func, reduce_func)
-
+            graph.update_all(message_func, self.reduce_func)
             h_neigh = graph.ndata["h_neigh"]
-            h_self = self.W_self(graph.ndata["h"])  # Transform self-node features
+            h_self = self.W_self(graph.ndata["h"])
             h_combined = torch.cat([h_self, h_neigh], dim=1)
-
             output_node_features = self.node_dropout(
                 tnn.functional.relu(self.W_concat(h_combined))
             )
-            graph.ndata["h_out"] = output_node_features
+            return output_node_features
+
+
+class edgeFeatureSAGEConv(tnn.Module):
+    def __init__(
+        self,
+        in_feats_node,
+        in_feats_edge,
+        hidden_feats_node,
+        hidden_feats_edge,
+        num_gnn_layers,
+        aggregator_type="mean",
+        dropout_rate=0.3,
+    ):
+        super().__init__()
+
+        self.embedding_node = tnn.Linear(in_feats_node, hidden_feats_node)
+        self.embedding_edge = tnn.Linear(in_feats_edge, hidden_feats_edge)
+
+        self.gnn_layers = tnn.ModuleList()
+        for layer in range(num_gnn_layers):
+            self.gnn_layers.append(
+                messagePassingLayer(
+                    hidden_feats_node,
+                    hidden_feats_edge,
+                    hidden_feats_node,
+                    aggregator_type,
+                    dropout_rate,
+                )
+            )
+
+        predictor_input_dim = hidden_feats_node * 2
+
+        self.edge_predictor_mlp = tnn.Sequential(
+            tnn.Linear(predictor_input_dim, predictor_input_dim // 2),
+            tnn.ReLU(),
+            tnn.Dropout(dropout_rate),
+            tnn.Linear(predictor_input_dim // 2, predictor_input_dim // 4),
+            tnn.ReLU(),
+            tnn.Dropout(dropout_rate),
+            tnn.Linear(predictor_input_dim // 4, 1),
+        )
+
+    def forward(self, graph, node_features, edge_features):
+        with graph.local_scope():
+            h = self.embedding_node(node_features)
+            e = self.embedding_edge(edge_features)
+
+            for layer in self.gnn_layers:
+                h = layer(graph, h, e)
+            graph.ndata["h_out"] = h
 
             def edge_score_func(edges):
-                combined_edge_input = torch.cat(
+                combined_node_features = torch.cat(
                     [edges.src["h_out"], edges.dst["h_out"]], dim=1
                 )
-                score = self.edge_predictor_mlp(combined_edge_input)
+                score = self.edge_predictor_mlp(combined_node_features)
                 return {"score": score}
 
             graph.apply_edges(edge_score_func)
@@ -134,11 +157,11 @@ def init_model(graph, seed, device, load_path=None):
     epoch_start = 0
     torch.manual_seed(seed)
     model = edgeFeatureSAGEConv(
-        graph.ndata["h"].shape[1], graph.edata["e"].shape[1], 64, "mean", 0.3
+        graph.ndata["h"].shape[1], graph.edata["e"].shape[1], 512, 64, 2, "sum"
     ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     if load_path:
-        map_location = {'cuda:0': str(device)}
+        map_location = {"cuda:0": str(device)}
         checkpoint = torch.load(load_path, map_location=map_location)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -195,8 +218,9 @@ def main(
     save_freq=0,
     load_path=None,
 ):
+    backend = "nccl" if world_size > 1 else "gloo"
     init_process_group(
-        backend="gloo",
+        backend=backend,
         init_method="tcp://127.0.0.1:12345",
         world_size=world_size,
         rank=rank,
