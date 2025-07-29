@@ -110,21 +110,34 @@ def make_graph(mol3D):
 
 def merge_edatas(edata1, edata2):
     for k, v in edata2.items():
-        assert bool(k in edata1) != bool(k[::-1] in edata1)
-        if k in edata1:
-            edata1[k] = v
-        elif k[::-1] in edata1:
-            edata1[k[::-1]] = v
-        assert bool(k in edata1) != bool(k[::-1] in edata1)
+        if k not in edata1 and k[::-1] not in edata1:
+            # this condition happens when fdb thinks there should be a bond but that bond does not exist after ATB_QMData_to_Molecule3D; we just ignore fdb.
+            continue
+        else:
+            assert bool(k in edata1) != bool(
+                k[::-1] in edata1
+            ), f"Bond {k} is already in edata1, but its reverse {k[::-1]} is also present. edatas1: {edata1}"
+            if k in edata1:
+                edata1[k] = v
+            elif k[::-1] in edata1:
+                edata1[k[::-1]] = v
+            assert bool(k in edata1) != bool(k[::-1] in edata1)
     return edata1
 
 
 def write_full_mol_graph(
-    mol3D, graph_edatas, graph_ndatas, graphs, bond=None, fc=None, rotational_equivalence=False
+    mol3D,
+    graph_edatas,
+    graph_ndatas,
+    graphs,
+    bond=None,
+    fc=None,
+    rotational_equivalence=False,
 ):
     if rotational_equivalence:
         calc_equal_bonds(mol3D)
         cull_equal_bonds(mol3D, "mean", True)
+
     graph_ndatas[mol3D.name], graph_edatas[mol3D.name] = calc_mol3D_vectors(
         mol3D, None, True
     )
@@ -150,12 +163,16 @@ def write_graph_features(mol3D, atom1, atom2, fc, graph_edatas, graph_ndatas, gr
     elif atom1 != None and atom2 != None and fc != None:
         if mol3D.name in graph_ndatas:
             write_partial_mol_graph(mol3D, (atom1, atom2), graph_edatas, fc)
-            value = graph_edatas[mol3D.name].get((atom1, atom2)) or graph_edatas[mol3D.name].get((atom2, atom1))
-            assert (value == fc), (
-                f"Bond ({atom1}, {atom2}) in {mol3D.name} has force constant {value}, expected {fc}."
-            )
+            value = graph_edatas[mol3D.name].get((atom1, atom2)) or graph_edatas[
+                mol3D.name
+            ].get((atom2, atom1))
+            assert (
+                value == fc
+            ), f"Bond ({atom1}, {atom2}) in {mol3D.name} has force constant {value}, expected {fc}."
         else:
-            write_full_mol_graph(mol3D, graph_edatas, graph_ndatas, graphs, (atom1, atom2), fc)
+            write_full_mol_graph(
+                mol3D, graph_edatas, graph_ndatas, graphs, (atom1, atom2), fc
+            )
     else:
         raise ValueError(
             f"atom1, atom2, and fc must all be None, or all be defined. Got atom1: {atom1}, atom2: {atom2}, fc: {fc}."

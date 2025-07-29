@@ -205,9 +205,12 @@ def evaluate(model, dataloader, device, percentage_error=False):
     return total_loss / num_batches
 
 
-def save_model(epoch, model, optimizer, loss, dataset_name):
+def save_model(epoch, model, optimizer, loss, dataset_name, best=False):
     os.makedirs("checkpoints", exist_ok=True)
     epoch = str(epoch)
+    write_path_prefix = f"{dataset_name}_{epoch}"
+    if best:
+        write_path_prefix = f"{dataset_name}_best"
     torch.save(
         {
             "epoch": epoch,
@@ -215,7 +218,7 @@ def save_model(epoch, model, optimizer, loss, dataset_name):
             "optimizer_state_dict": optimizer.state_dict(),
             "loss": loss,
         },
-        "checkpoints/{}_epoch_{}.pt".format(dataset_name, epoch),
+        f"checkpoints/{write_path_prefix}.pt",
     )
 
 
@@ -229,6 +232,7 @@ def main(
     save_dataset_name=None,
     save_freq=0,
     load_path=None,
+    min_delta=100
 ):
     backend = "nccl" if world_size > 1 else "gloo"
     init_process_group(
@@ -295,8 +299,16 @@ def main(
             print(
                 f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Validation loss: {val_loss:.4f}"
             )
-            if val_loss < best_val_loss:
+            if val_loss < best_val_loss - min_delta:
                 best_val_loss = val_loss
+                save_model(
+                    epoch_start + epoch + 1,
+                    model,
+                    optimizer,
+                    best_val_loss,
+                    save_dataset_name,
+                    best=True,
+                )
                 patience_counter = 0
             else:
                 patience_counter += 1
@@ -311,12 +323,13 @@ def main(
                             optimizer,
                             val_loss,
                             save_dataset_name,
+                            best=True,
                         )
                     break
 
     if rank == 0:
         save_model(
-            epoch_start + total_epoch,
+            "final",
             model,
             optimizer,
             best_val_loss,
