@@ -111,7 +111,7 @@ def make_graph(mol3D):
 def merge_edatas(edata1, edata2):
     for k, v in edata2.items():
         if k not in edata1 and k[::-1] not in edata1:
-            # this condition happens when fdb thinks there should be a bond but that bond does not exist after ATB_QMData_to_Molecule3D; we just ignore fdb.
+            # this condition happens when fdb thinks there should be a bond but that bond does not exist after ATB_QMData_to_Molecule3D
             continue
         else:
             assert bool(k in edata1) != bool(
@@ -167,7 +167,7 @@ def write_graph_features(mol3D, atom1, atom2, fc, graph_edatas, graph_ndatas, gr
                 mol3D.name
             ].get((atom2, atom1))
             assert (
-                value == fc
+                value == fc or value == None # None handles the case where the bond does not exist due to fdb error in merge_edatas
             ), f"Bond ({atom1}, {atom2}) in {mol3D.name} has force constant {value}, expected {fc}."
         else:
             write_full_mol_graph(
@@ -180,7 +180,7 @@ def write_graph_features(mol3D, atom1, atom2, fc, graph_edatas, graph_ndatas, gr
 
 
 def create_graph_dataset(
-    gathered_neighbours=None, fdb_path=None, check=False, output_prefix=""
+    hessian_data_path, charges_fn, gathered_neighbours=None, fdb_path=None, check=False, output_prefix=""
 ):
     """
     Generate molecular graphs and features from gathered neighbours. Will generate as many graphs as there are unique molIDs in gathered_neighbours.
@@ -200,7 +200,7 @@ def create_graph_dataset(
         gathered_neighbours == fdb_path == None
     ), "Either gathered_neighbours or fdb_path must be provided, or neither, but not both."
 
-    charges = load_charges()
+    charges = load_charges(charges_fn)
     graph_ndatas = {}
     graph_edatas = {}
     graphs = {}
@@ -297,18 +297,18 @@ def create_graph_dataset(
 
     else:
         for molID in progress_bar(
-            os.listdir("/home/yaofu/data/atb_fc/NXMol/src/hessian_data"),
+            os.listdir(hessian_data_path),
             prefix="Writing graphs from hessian data (not gathering neighbours)",
         ):
             try:
                 mol3D = load_mol3D(
-                    load_qm_data(molID), net_charge=charges[molID], molID=molID
+                    load_qm_data(molID, hessian_data_path), net_charge=charges[molID], molID=molID
                 )
                 write_graph_features(
                     mol3D, None, None, None, graph_edatas, graph_ndatas, graphs
                 )
             except Exception as e:
-                print(f"Error loading {molID}: {e}")
+                print(f"Error loading {molID}. {type(e).__name__}: {e}")
                 continue
 
     pickle.dump(graph_ndatas, open(f"{output_prefix}_graph_ndatas.pickle", "wb"))

@@ -49,8 +49,10 @@ def load_charges(csv_path: str = "netcharges.csv") -> dict:
     Load net charges into a dict of [molid, charge] lists. The CSV file should contain two columns, molID and net charge
     """
 
+    print(f"Please enter the delimiter used in the CSV file:")
+    delimiter = input()
     with open(csv_path, newline="") as csvfile:
-        data = csv.reader(csvfile, delimiter="\t")
+        data = csv.reader(csvfile, delimiter=delimiter)
         net_charges = {}
         for x in data:
             net_charges[x[0]] = int(x[1])

@@ -11,7 +11,7 @@ from chemistry_data_structure.parsing.hessian_analysis import (
     cal_eigen_matrix,
 )
 from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecule3D
-from featurize import load_qm_data, printProgressBar
+from featurize import load_qm_data
 from scipy.constants import pi, c
 
 
