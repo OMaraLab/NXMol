@@ -212,12 +212,14 @@ def evaluate(model, dataloader, device, percentage_error=False):
     return total_loss / num_batches
 
 
-def save_model(epoch, model, optimizer, loss, dataset_name, best=False):
+def save_model(epoch, model, optimizer, loss, dataset_name, best=False, fold=None):
     os.makedirs("checkpoints", exist_ok=True)
     epoch = str(epoch)
     write_path_prefix = f"{dataset_name}_{epoch}"
     if best:
         write_path_prefix = f"{dataset_name}_best"
+    if fold:
+        write_path_prefix += f"_fold_{fold}"
     torch.save(
         {
             "epoch": epoch,
@@ -314,6 +316,7 @@ def main(
                         optimizer,
                         total_loss / num_batches,
                         save_dataset_name,
+                        fold=f"{fold}_of_{k}" if k else None,
                     )
 
             # early stopping
@@ -339,6 +342,7 @@ def main(
                         best_test_loss,
                         save_dataset_name,
                         best=True,
+                        fold=f"{fold}_of_{k}" if k else None,
                     )
                     patience_counter = 0
                 else:
@@ -355,6 +359,7 @@ def main(
                                 best_test_loss,
                                 save_dataset_name,
                                 best=True,
+                                fold=f"{fold} of {k}" if k else None,
                             )
                         break
 
@@ -365,6 +370,7 @@ def main(
                 optimizer,
                 best_test_loss,
                 save_dataset_name,
+                fold=f"{fold} of {k}" if k else None,
             )
         with torch.no_grad():
             train_loss = evaluate(model, train_loader, device)
@@ -372,4 +378,6 @@ def main(
             test_loss = evaluate(model, test_loader, device)
             test_loss = evaluate(model, test_loader, device, percentage_error=True)
 
-        print(f"Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}")
+        print(
+            f"for fold: {fold}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}"
+        )
