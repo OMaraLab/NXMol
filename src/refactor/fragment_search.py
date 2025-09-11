@@ -1,9 +1,9 @@
 from collections import defaultdict
 import os
 import pickle
+import random
 import re
 from statistics import mean
-from sys import exit
 
 from chemistry_data_structure.parsing import hessian_analysis, input_parsers
 from refactor import featurize, utils
@@ -19,6 +19,7 @@ def gather_neighbours(
     depth: int = 1,
     write: bool = True,
     output_path: str = "gathered_neighbours.pickle",
+    molIDs_list: list[str] = None,
 ):
     """
     Gather the {depth}-degree neighbours of every bond in a dataset into a defaultdict(defaultdict(list)), where k : v of the outer dict is bond type (e.g., C:C) : neighbourhood type, and k : v of the inner dict is neighbourhood type : list of bonds with that neighbourhood type. In the list of bonds, each bond is in the format of the return value of Molecule3D.BFS_edge(hybridisation = True).
@@ -30,7 +31,9 @@ def gather_neighbours(
     for x in utils.progress_bar(
         os.listdir(data_dir), prefix="Gathering neighbours from molecules"
     ):
-        qm = featurize.load_qm_data(x)
+        if molIDs_list and x not in molIDs_list:
+            continue
+        qm = featurize.load_qm_data(x, data_dir=data_dir)
         try:
             mol3D = input_parsers.ATB_QMData_to_Molecule3D(
                 qm, net_charge=net_charges[x], name=x
@@ -94,3 +97,78 @@ def calc_mean_fc(bond_list: list, output_fc_list: bool = False):
     if output_fc_list:
         return mean_fc, fc_list
     return mean_fc
+
+
+def get_popular_fragmnets(gathered_neighbours_path: str, top_n: int = 5):
+    """
+    Find the top n most prevalent fragments in a set of gathered neighbours (written by gather_neighbours()).
+    NOTE: I should probably do the sorting in gather_neighbours() itself, but I would probably lose backward compatibility somewhere down the pipeline.
+    """
+    gathered_neighbours = pickle.load(open(gathered_neighbours_path, "rb"))
+    sorted_gathered_neighbours = defaultdict(dict)
+    for pair in gathered_neighbours:
+        sorted_neighbourhoods_within_pair = sorted(
+            gathered_neighbours[pair],
+            key=lambda nei: len(gathered_neighbours[pair][nei]),
+            reverse=True,
+        )
+        sorted_gathered_neighbours[pair] = {
+            nei: gathered_neighbours[pair][nei]
+            for nei in sorted_neighbourhoods_within_pair
+        }
+    n_top_fragments_in_each_pair = []
+    for pair in sorted_gathered_neighbours:
+        n = 0
+        for nei in sorted_gathered_neighbours[pair]:
+            n_top_fragments_in_each_pair.append(
+                (
+                    pair,
+                    nei,
+                    len(sorted_gathered_neighbours[pair][nei]),
+                    sorted_gathered_neighbours[pair][nei],
+                )
+            )
+            n += 1
+            if n > top_n:
+                break
+    return sorted(n_top_fragments_in_each_pair, key=lambda x: x[2], reverse=True)
+
+
+def draw_and_select_top_fragments(
+    gathered_neighbours_path: str,
+    data_dir: str,
+    net_charge_path: str,
+    top_fragments: list,
+    n: int = 5,
+):
+    """
+    Interactively draw and select the top n most prevalent fragments in the list of popular fragments returned by get_popular_fragments using Molecule3D method.
+    """
+    fragments_by_prevalence = defaultdict(list)
+    gathered_neighbours = pickle.load(open(gathered_neighbours_path, "rb"))
+    net_charges = utils.load_charges(net_charge_path)
+    draw_more = True
+    current_index = 0
+    while draw_more:
+        for i in range(current_index, n):
+            pair, nei, count, bonds = top_fragments[i]
+            print(f"Drawing fragment: {pair}/{nei}, which appears {count} times in the dataset.")
+            draw_more_of_this_pair = True
+            while draw_more_of_this_pair:
+                bond = random.choice(gathered_neighbours[pair][nei])
+                atom1, atom2, molID = re.findall(r"(\d+)", bond)
+                print(f"Drawing molecule {molID}")
+                qm_data = featurize.load_qm_data(molID, data_dir=data_dir)
+                mol3D = input_parsers.ATB_QMData_to_Molecule3D(
+                    qm_data, net_charge=net_charges[molID], name=molID
+                )
+                mol3D.draw_graph(show=True, node_size=15, mark_atoms=[atom1, atom2])
+                draw_more_of_this_pair = input("Draw another of this pair? (y/n): ").lower() == "y"
+            if input("Add this fragment to the list? (y/n): ").lower() == "y":
+                fragments_by_prevalence[pair].append((nei, count, bonds))
+            current_index = i
+        current_index += 1
+        n += 5
+        draw_more = input("Draw more? (y/n): ").lower() == "y"
+    return fragments_by_prevalence
+

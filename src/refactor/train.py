@@ -150,9 +150,9 @@ class edgeFeatureSAGEConv(tnn.Module):
             return graph.edata["score"]
 
 
-def get_dataloaders(dataset, seed, batch_size):
+def get_dataloaders(dataset, seed, batch_size, shuffle=True):
     train_set, val_set, test_set = dgl.data.split_dataset(
-        dataset, frac_list=[0.8, 0.1, 0.1], shuffle=True, random_state=seed
+        dataset, frac_list=[0.8, 0, 0.2], shuffle=shuffle, random_state=seed
     )
     train_loader = dgl.dataloading.GraphDataLoader(
         train_set, use_ddp=True, batch_size=batch_size, shuffle=True
@@ -161,6 +161,13 @@ def get_dataloaders(dataset, seed, batch_size):
     test_loader = dgl.dataloading.GraphDataLoader(test_set, batch_size=batch_size)
 
     return train_loader, val_loader, test_loader
+
+
+def k_fold_split(dataset, k):
+    import numpy as np
+
+    indices = np.arange(len(dataset))
+    return np.array_split(indices, k)
 
 
 def init_model(graph, seed, device, load_path=None):
@@ -232,8 +239,15 @@ def main(
     save_dataset_name=None,
     save_freq=0,
     load_path=None,
-    min_delta=100
+    min_delta=100,
+    k=None,
+    k_fold_indices=None,
 ):
+    assert bool(k) == bool(
+        k_fold_indices
+    ), "If k is specified, k_fold_indices must be provided"
+    for x in k_fold_indices:
+        assert x < k, "k_fold_indices must be less than k"
     backend = "nccl" if world_size > 1 else "gloo"
     init_process_group(
         backend=backend,
@@ -247,99 +261,115 @@ def main(
     else:
         device = torch.device("cpu")
 
-    best_val_loss = float("inf")
+    best_test_loss = float("inf")
     patience_counter = 0
     patience_limit = patience
     model, optimizer, epoch_start = init_model(dataset[0], seed, device, load_path)
 
-    train_loader, val_loader, test_loader = get_dataloaders(
-        dataset, seed, batch_size=128
-    )
-    for epoch in range(total_epoch):
-        model.train()
-        train_loader.set_epoch(epoch + epoch_start)
-        total_loss = 0
-        num_batches = 0
-        for batch in train_loader:
-            batched_graph = batch.to(device)
-            batched_score = batched_graph.edata["score"].to(device)
-            node_feats = batched_graph.ndata["h"].to(device)
-            edge_feats = batched_graph.edata["e"].to(device)
-
-            optimizer.zero_grad()
-            predicted_scores = model(batched_graph, node_feats, edge_feats)
-            loss = tnn.functional.l1_loss(predicted_scores[:, 0], batched_score)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.cpu().item()
-            num_batches += 1
-
-        if rank == 0:
-            print(
-                f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Training loss: {total_loss / num_batches:.4f}"
-            )
-            if save_freq and (epoch + 1) % save_freq == 0:
-                save_model(
-                    epoch + 1,
-                    model,
-                    optimizer,
-                    total_loss / num_batches,
-                    save_dataset_name,
-                )
-
-        # early stopping
-
-        with torch.no_grad():
-            val_loss = torch.tensor(evaluate(model, val_loader, device), device=device)
-            if world_size > 1:
-                torch.distributed.reduce(
-                    val_loss, dst=0, op=torch.distributed.ReduceOp.AVG
-                )
-        if rank == 0:
-            print(
-                f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Validation loss: {val_loss:.4f}"
-            )
-            if val_loss < best_val_loss - min_delta:
-                best_val_loss = val_loss
-                save_model(
-                    epoch_start + epoch + 1,
-                    model,
-                    optimizer,
-                    best_val_loss,
-                    save_dataset_name,
-                    best=True,
-                )
-                patience_counter = 0
-            else:
-                patience_counter += 1
-                if patience_counter >= patience_limit:
-                    print(
-                        f"Early stopping at epoch {epoch_start + epoch + 1}, best validation loss: {best_val_loss:.4f}"
-                    )
-                    if rank == 0:
-                        save_model(
-                            epoch_start + epoch + 1,
-                            model,
-                            optimizer,
-                            val_loss,
-                            save_dataset_name,
-                            best=True,
-                        )
-                    break
-
-    if rank == 0:
-        save_model(
-            "final",
-            model,
-            optimizer,
-            best_val_loss,
-            save_dataset_name,
+    train_loader, val_loader, test_loader = None, None, None
+    if not k:
+        train_loader, val_loader, test_loader = get_dataloaders(
+            dataset, seed, batch_size=128
         )
-    with torch.no_grad():
-        train_loss = evaluate(model, train_loader, device)
-        val_loss = evaluate(model, val_loader, device)
-        test_loss = evaluate(model, test_loader, device, percentage_error=True)
+    else:
+        splits = k_fold_split(dataset, k=k)
 
-    print(
-        f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Test Loss: {test_loss:.4f}"
-    )
+    for fold in k_fold_indices if k_fold_indices else range(1):
+        print(f"Starting fold {fold + 1}/{k if k else 1}")
+        if k_fold_indices:
+            test_set = dgl.data.utils.Subset(dataset, splits.pop(fold))
+            test_loader = dgl.dataloading.GraphDataLoader(test_set, batch_size=128)
+            train_set = dgl.data.utils.Subset(dataset, [x for xs in splits for x in xs])
+            train_loader = dgl.dataloading.GraphDataLoader(
+                train_set, use_ddp=True, batch_size=128, shuffle=True
+            )
+
+        for epoch in range(total_epoch):
+            model.train()
+            train_loader.set_epoch(epoch + epoch_start)
+            total_loss = 0
+            num_batches = 0
+            for batch in train_loader:
+                batched_graph = batch.to(device)
+                batched_score = batched_graph.edata["score"].to(device)
+                node_feats = batched_graph.ndata["h"].to(device)
+                edge_feats = batched_graph.edata["e"].to(device)
+
+                optimizer.zero_grad()
+                predicted_scores = model(batched_graph, node_feats, edge_feats)
+                loss = tnn.functional.l1_loss(predicted_scores[:, 0], batched_score)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.cpu().item()
+                num_batches += 1
+
+            if rank == 0:
+                print(
+                    f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Training loss: {total_loss / num_batches:.4f}"
+                )
+                if save_freq and (epoch + 1) % save_freq == 0:
+                    save_model(
+                        epoch + 1,
+                        model,
+                        optimizer,
+                        total_loss / num_batches,
+                        save_dataset_name,
+                    )
+
+            # early stopping
+
+            with torch.no_grad():
+                test_loss = torch.tensor(
+                    evaluate(model, test_loader, device), device=device
+                )
+                if world_size > 1:
+                    torch.distributed.reduce(
+                        test_loss, dst=0, op=torch.distributed.ReduceOp.AVG
+                    )
+            if rank == 0:
+                print(
+                    f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Test loss: {test_loss:.4f}"
+                )
+                if test_loss < best_test_loss - min_delta:
+                    best_test_loss = test_loss
+                    save_model(
+                        epoch_start + epoch + 1,
+                        model,
+                        optimizer,
+                        best_test_loss,
+                        save_dataset_name,
+                        best=True,
+                    )
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+                    if patience_counter >= patience_limit:
+                        print(
+                            f"Early stopping at epoch {epoch_start + epoch + 1}, best validation loss: {best_test_loss:.4f}"
+                        )
+                        if rank == 0:
+                            save_model(
+                                epoch_start + epoch + 1,
+                                model,
+                                optimizer,
+                                best_test_loss,
+                                save_dataset_name,
+                                best=True,
+                            )
+                        break
+
+        if rank == 0:
+            save_model(
+                "final",
+                model,
+                optimizer,
+                best_test_loss,
+                save_dataset_name,
+            )
+        with torch.no_grad():
+            train_loss = evaluate(model, train_loader, device)
+            # val_loss = evaluate(model, val_loader, device)
+            test_loss = evaluate(model, test_loader, device)
+            test_loss = evaluate(model, test_loader, device, percentage_error=True)
+
+        print(f"Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}")

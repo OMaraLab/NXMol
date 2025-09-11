@@ -457,6 +457,7 @@ class _2DChemicalObj:
         draw_formal_charges: bool = False,
         draw_chiral: bool = False,
         draw_marked_atoms: bool = False,
+        mark_atoms: List = None,
     ):
         """
         Draws the molecular graph in kamada kawai layout.
@@ -518,7 +519,7 @@ class _2DChemicalObj:
         else:
             # otherwise draw normal graph
             graph = self._graph
-            print(self.atoms)
+            # print(self.atoms)
             formal_charges = self.formal_charges
             chirality = self.chirality
             bond_orders = self.bond_orders
@@ -531,6 +532,12 @@ class _2DChemicalObj:
                 colour_map.append(
                     MARKED_COLOURS["Marked"]
                     if atom.get_index() in marked_atom_ids
+                    else MARKED_COLOURS["Unmarked"]
+                )
+            elif mark_atoms is not None:
+                colour_map.append(
+                    MARKED_COLOURS["Marked"]
+                    if atom.get_index() in mark_atoms
                     else MARKED_COLOURS["Unmarked"]
                 )
             else:
