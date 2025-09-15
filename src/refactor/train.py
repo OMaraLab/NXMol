@@ -359,7 +359,7 @@ def main(
                                 best_test_loss,
                                 save_dataset_name,
                                 best=True,
-                                fold=f"{fold} of {k}" if k else None,
+                                fold=f"{fold}_of_{k}" if k else None,
                             )
                         break
 
@@ -370,7 +370,7 @@ def main(
                 optimizer,
                 best_test_loss,
                 save_dataset_name,
-                fold=f"{fold} of {k}" if k else None,
+                fold=f"{fold}_of_{k}" if k else None,
             )
         with torch.no_grad():
             train_loss = evaluate(model, train_loader, device)
