@@ -329,6 +329,7 @@ def main(
                     torch.distributed.reduce(
                         test_loss, dst=0, op=torch.distributed.ReduceOp.AVG
                     )
+            stop_flag = torch.zeros(1, dtype=torch.bool).to(device)
             if rank == 0:
                 print(
                     f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Test loss: {test_loss:.4f}"
@@ -361,7 +362,13 @@ def main(
                                 best=True,
                                 fold=f"{fold}_of_{k}" if k else None,
                             )
-                        break
+                        stop_flag[0] = True
+
+            if world_size > 1:
+                torch.distributed.broadcast(stop_flag, src=0)
+            if stop_flag.item():
+                print(f"Process {rank} stopping early")
+                break
 
         if rank == 0:
             save_model(
