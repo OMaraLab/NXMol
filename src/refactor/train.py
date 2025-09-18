@@ -263,10 +263,6 @@ def main(
     else:
         device = torch.device("cpu")
 
-    best_test_loss = float("inf")
-    patience_counter = 0
-    patience_limit = patience
-
     train_loader, val_loader, test_loader = None, None, None
     if not k:
         train_loader, val_loader, test_loader = get_dataloaders(
@@ -276,6 +272,9 @@ def main(
         splits = k_fold_split(dataset, k=k)
 
     for fold in k_fold_indices if k_fold_indices else range(1):
+        best_test_loss = float("inf")
+        patience_counter = 0
+        patience_limit = patience
         model, optimizer, epoch_start = init_model(dataset[0], seed, device, load_path)
         print(f"Starting fold {fold + 1}/{k if k else 1}")
         if k_fold_indices:
