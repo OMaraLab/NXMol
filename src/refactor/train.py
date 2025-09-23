@@ -324,14 +324,23 @@ def main(
                 test_loss = torch.tensor(
                     evaluate(model, test_loader, device), device=device
                 )
+                test_loss_percent = torch.tensor(
+                    evaluate(model, test_loader, device, percentage_error=True),
+                    device=device,
+                )
                 if world_size > 1:
                     torch.distributed.reduce(
                         test_loss, dst=0, op=torch.distributed.ReduceOp.AVG
                     )
+                    torch.distributed.reduce(
+                        test_loss_percent,
+                        dst=0,
+                        op=torch.distributed.ReduceOp.AVG,
+                    )
             stop_flag = torch.zeros(1, dtype=torch.bool).to(device)
             if rank == 0:
                 print(
-                    f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Test loss: {test_loss:.4f}"
+                    f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Test loss: {test_loss:.4f}/{test_loss_percent:.4f}%"
                 )
                 if test_loss < best_test_loss - min_delta:
                     best_test_loss = test_loss
@@ -349,7 +358,7 @@ def main(
                     patience_counter += 1
                     if patience_counter >= patience_limit:
                         print(
-                            f"Early stopping at epoch {epoch_start + epoch + 1}, best validation loss: {best_test_loss:.4f}"
+                            f"Early stopping at epoch {epoch_start + epoch + 1}, best test loss: {best_test_loss:.4f}/{test_loss_percent:.4f}%"
                         )
                         if rank == 0:
                             save_model(
@@ -367,7 +376,7 @@ def main(
                 torch.distributed.broadcast(stop_flag, src=0)
             if stop_flag.item():
                 print(f"Process {rank} stopping early")
-                break
+                return
 
         if rank == 0:
             save_model(
@@ -382,8 +391,10 @@ def main(
             train_loss = evaluate(model, train_loader, device)
             # val_loss = evaluate(model, val_loader, device)
             test_loss = evaluate(model, test_loader, device)
-            test_loss = evaluate(model, test_loader, device, percentage_error=True)
+            test_loss_percent = evaluate(
+                model, test_loader, device, percentage_error=True
+            )
 
         print(
-            f"for fold: {fold}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}"
+            f"for fold: {fold}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}/{test_loss_percent:.4f}%"
         )
