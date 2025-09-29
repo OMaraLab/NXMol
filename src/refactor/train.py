@@ -278,7 +278,7 @@ def main(
         model, optimizer, epoch_start = init_model(dataset[0], seed, device, load_path)
         print(f"Starting fold {fold + 1}/{k if k else 1}")
         if k_fold_indices:
-            test_set = dgl.data.utils.Subset(dataset, splits.pop(fold))
+            test_set = dgl.data.utils.Subset(dataset, splits[fold])
             test_loader = dgl.dataloading.GraphDataLoader(test_set, batch_size=128)
             train_set = dgl.data.utils.Subset(dataset, [x for xs in splits for x in xs])
             train_loader = dgl.dataloading.GraphDataLoader(
@@ -340,7 +340,7 @@ def main(
             stop_flag = torch.zeros(1, dtype=torch.bool).to(device)
             if rank == 0:
                 print(
-                    f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Test loss: {test_loss:.4f}/{test_loss_percent:.4f}%"
+                    f"Epoch: {epoch_start + epoch + 1}/{epoch_start + total_epoch}, Test loss: {test_loss:.4f}/{test_loss_percent*100}%"
                 )
                 if test_loss < best_test_loss - min_delta:
                     best_test_loss = test_loss
@@ -358,7 +358,7 @@ def main(
                     patience_counter += 1
                     if patience_counter >= patience_limit:
                         print(
-                            f"Early stopping at epoch {epoch_start + epoch + 1}, best test loss: {best_test_loss:.4f}/{test_loss_percent:.4f}%"
+                            f"Early stopping at epoch {epoch_start + epoch + 1}, best test loss: {best_test_loss:.4f}/{test_loss_percent*100}%"
                         )
                         if rank == 0:
                             save_model(
@@ -396,5 +396,5 @@ def main(
             )
 
         print(
-            f"for fold: {fold}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}/{test_loss_percent:.4f}%"
+            f"for fold: {fold}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}/{test_loss_percent*100}%"
         )
