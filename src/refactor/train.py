@@ -376,7 +376,7 @@ def main(
                 torch.distributed.broadcast(stop_flag, src=0)
             if stop_flag.item():
                 print(f"Process {rank} stopping early")
-                return
+                break
 
         if rank == 0:
             save_model(
@@ -398,3 +398,5 @@ def main(
         print(
             f"for fold: {fold}, Train Loss: {train_loss:.4f}, Test Loss: {test_loss:.4f}/{test_loss_percent*100}%"
         )
+
+        torch.distributed.barrier()
