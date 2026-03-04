@@ -45,8 +45,8 @@ def gather_neighbours(
         for i, j in mol3D.bonds:
             nei_a, nei_b, bond_tag = mol3D.BFS_edge(i, j, depth, hybridisation=True)
             ele_a_id, ele_b_id, _ = tuple(bond_tag.split("_"))
-            ele_a = ele_a_id[0]
-            ele_b = ele_b_id[0]
+            ele_a = re.search(r'[A-Z]+', ele_a_id).group()
+            ele_b = re.search(r'[A-Z]+', ele_b_id).group()
 
             ele_key = tuple(sorted((ele_a, ele_b)))
             nei_key = tuple(sorted((nei_a, nei_b)))

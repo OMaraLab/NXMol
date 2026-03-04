@@ -61,7 +61,7 @@ class messagePassingLayer(tnn.Module):
             self.mp_pool = tnn.Sequential(
                 tnn.Linear(out_feats_node, out_feats_node), tnn.ReLU()
             )
-            self.reduce_func = dfn.max("m", "h_neigh")
+            self.reduce_func = dfn.mean("m", "h_neigh")
 
     def forward(self, graph, node_features, edge_features):
         with graph.local_scope():
@@ -117,7 +117,8 @@ class edgeFeatureSAGEConv(tnn.Module):
                 )
             )
 
-        predictor_input_dim = hidden_feats_node * 2
+        # predictor_input_dim = hidden_feats_node * 2
+        predictor_input_dim = hidden_feats_node
 
         self.edge_predictor_mlp = tnn.Sequential(
             tnn.Linear(predictor_input_dim, predictor_input_dim // 2),
@@ -139,9 +140,10 @@ class edgeFeatureSAGEConv(tnn.Module):
             graph.ndata["h_out"] = h
 
             def edge_score_func(edges):
-                combined_node_features = torch.cat(
-                    [edges.src["h_out"], edges.dst["h_out"]], dim=1
-                )
+                # combined_node_features = torch.cat(
+                #     [edges.src["h_out"], edges.dst["h_out"]], dim=1
+                # )
+                combined_node_features = (edges.src["h_out"] + edges.dst["h_out"])
                 score = self.edge_predictor_mlp(combined_node_features)
                 return {"score": score}
 
@@ -248,7 +250,7 @@ def main(
     assert bool(k) == bool(
         k_fold_indices
     ), "If k is specified, k_fold_indices must be provided"
-    for x in k_fold_indices:
+    for x in k_fold_indices if k_fold_indices else []:
         assert x < k, "k_fold_indices must be less than k"
     backend = "nccl" if world_size > 1 else "gloo"
     init_process_group(

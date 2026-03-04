@@ -21,6 +21,7 @@ from chemistry_data_structure.parsing.pdb import (
     bonds_for_pdb_line,
     is_pdb_connect_line,
     pdb_atoms_in,
+    get_bond_length
 )
 from chemistry_data_structure.helpers.chem import (
     BOHR_PER_ANG,
@@ -88,13 +89,9 @@ def ATB_QMData_to_Molecule3D(qm_data, net_charge=None, name="", COVALENT_BOND_OR
         qm_data["primary_axis_coords"], qm_data["hessian"]
     )
 
-    force_constants = {}
     bonds = []
     for i, j, bond_order in qm_data["bond_order"]:
         if bond_order > COVALENT_BOND_ORDER_THRESHOLD:
-            force_constants[frozenset([i-1, j-1])] = cal_stretching(
-                [i, j], umatrix, eigmatrix
-            )
             atom_names = [str(i-1), str(j-1)]
             bonds.append(
                 atom_names
@@ -218,6 +215,10 @@ def pdb_to_Molecule3D(
                 coordinates=pdb_atom.coordinates,
                 full_valence=FULL_VALENCES[pdb_atom.element.upper()],
                 valence_electrons=VALENCE_ELECTRONS[pdb_atom.element.upper()],
+                atomic_number=ATOMIC_NUMBER[pdb_atom.element],
+                radius=RADIUS[pdb_atom.element],
+                mass=MASS[pdb_atom.element],
+                electronegativity=ELECTRONEGATIVITIES[pdb_atom.element]
             )
         )
 
@@ -244,6 +245,13 @@ def pdb_to_Molecule3D(
             pdb_atom_index_name_map[a2_ind],
         )
         bonds.append((a1_name, a2_name, Bond3D(set((a1_name, a2_name)))))
+        bonds[-1][-1].update(
+                force_constant=None,
+                bond_length=get_bond_length(
+                    next(atom for atom in atoms if atom.name == a1_name),
+                    next(atom for atom in atoms if atom.name == a2_name),
+                )
+        )
 
     molecule = Molecule3D(atoms, bonds, name=mol_name, net_charge=net_charge)
 
