@@ -43,7 +43,9 @@ def get_test_set_molIDs(dataset_path: str, seed: int):
 
 def adib(value, lower_bound, upper_bound):
     """
-    Calculates the mean squared distance of a single wavenumber from a defined IR band. If the value is within the band, the distance is 0. Otherwise, it's the shortest distance to either bound.
+    Calculates the mean squared distance of a single wavenumber from a defined IR band. 
+    If the value is within the band, the distance is 0. Otherwise, it's the shortest 
+    distance to either bound.
     """
     if lower_bound <= value <= upper_bound:
         return 0.0
@@ -64,7 +66,10 @@ def calculate_adib_for_bonds(
     plot_bounds: tuple = None,
 ):
     """
-    Calculate the average distance from IR bands for a given set of bonds, using both the GNN predictions and the Seminario force constants (both converted to wavenumbers). Also draws two histograms of the wavenumber distributions with the IR boundaries labelled.
+    Calculate the average distance from IR bands for a given set of bonds, using 
+    both the GNN predictions and the Seminario force constants (both converted to 
+    wavenumbers). Also draws two histograms of the wavenumber distributions with 
+    the IR boundaries labelled.
     """
     to_evaluate = defaultdict(list)
     for bond in bonds:
