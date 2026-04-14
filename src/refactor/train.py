@@ -278,6 +278,7 @@ def main(
         patience_counter = 0
         patience_limit = patience
         model, optimizer, epoch_start = init_model(dataset[0], seed, device, load_path)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=20)
         print(f"Starting fold {fold + 1}/{k if k else 1}")
         if k_fold_indices:
             test_set = dgl.data.utils.Subset(dataset, splits[fold])
@@ -320,7 +321,8 @@ def main(
                         fold=f"{fold}_of_{k}" if k else None,
                     )
 
-            # early stopping
+
+            # eval
 
             with torch.no_grad():
                 test_loss = torch.tensor(
@@ -339,6 +341,10 @@ def main(
                         dst=0,
                         op=torch.distributed.ReduceOp.AVG,
                     )
+                scheduler.step(test_loss)
+
+            # early stopping
+
             stop_flag = torch.zeros(1, dtype=torch.bool).to(device)
             if rank == 0:
                 print(
