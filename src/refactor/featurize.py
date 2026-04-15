@@ -16,18 +16,22 @@ def load_qm_data(
 ):
     """
     Load pickled atb hessian data by molid.
+    NOTE: os.walk removes training slashes. DO NOT add training slashes when calling!!!
 
     @params:
         molid    - Required  : molecule id (Str)
     """
     for dirpath, _, filename in os.walk(data_dir):
         if dirpath == f"{data_dir}/{molid}":
-            with open(f"{dirpath}/{filename[0]}", "rb") as fh:
-                return pickle.load(fh)
+            if len(filename) == 1:
+                with open(f"{dirpath}/{filename[0]}", "rb") as fh:
+                    return pickle.load(fh)
+            else:
+                continue
     raise FileNotFoundError(f"Could not find {molid} in {data_dir}")
 
 
-def load_mol3D(qm_data, net_charge, molID):
+def load_mol3D(qm_data, net_charge, molID, discretise_bond_order=False):
     """
     Load a mol3Decule object from qm_data.
 
@@ -38,7 +42,7 @@ def load_mol3D(qm_data, net_charge, molID):
     """
     from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecule3D
 
-    return ATB_QMData_to_Molecule3D(qm_data, net_charge=net_charge, name=molID)
+    return ATB_QMData_to_Molecule3D(qm_data, net_charge=net_charge, name=molID, discretise_bond_order=discretise_bond_order)
 
 
 def get_bond_features(mol3D, i: int, j: int) -> list:
@@ -180,7 +184,8 @@ def write_graph_features(mol3D, atom1, atom2, fc, graph_edatas, graph_ndatas, gr
 
 
 def create_graph_dataset(
-    hessian_data_path, charges_fn, gathered_neighbours=None, fdb_path=None, check=False, output_prefix=""
+    hessian_data_path, charges_fn, gathered_neighbours=None, fdb_path=None, check=False, output_prefix="",
+    discretise_bond_order=False
 ):
     """
     Generate molecular graphs and features from gathered neighbours. Will generate as many graphs as there are unique molIDs in gathered_neighbours.
@@ -302,7 +307,7 @@ def create_graph_dataset(
         ):
             try:
                 mol3D = load_mol3D(
-                    load_qm_data(molID, hessian_data_path), net_charge=charges[molID], molID=molID
+                    load_qm_data(molID, hessian_data_path), net_charge=charges[molID], molID=molID, discretise_bond_order=discretise_bond_order
                 )
                 write_graph_features(
                     mol3D, None, None, None, graph_edatas, graph_ndatas, graphs
