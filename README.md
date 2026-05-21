@@ -10,3 +10,5 @@ Note this was forked by me personally, and then forked again from that with owne
 cd NXMol
 pip install .
 ```
+Original repo authors: Josef Holownia, Callum Macfarlane
+Fork author: Yao Fu
