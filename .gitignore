@@ -52,3 +52,5 @@ src/figures
 src/graphs
 src/refactor/evaluate.py
 
+src/chemistry_data_structure_gravy.egg-info
+src/chemistry_data_structure_lule.egg-info

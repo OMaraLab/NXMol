@@ -3,7 +3,6 @@ Parsers for the creation of MolecularEntity objects and their derivatives.
 """
 
 from functools import reduce
-import os
 import re
 from io import StringIO
 
@@ -34,33 +33,7 @@ from chemistry_data_structure.helpers.chem import (
     ELECTRONEGATIVITIES,
     VALENCE_ELECTRONS,
 )
-
-def suppress_output(func):
-    def wrapper(*args, **kwargs):
-        # Save the original file descriptors
-        original_stdout_fd = os.dup(1)
-        original_stderr_fd = os.dup(2)
-
-        try:
-            # Open /dev/null and redirect stdout and stderr
-            devnull = os.open(os.devnull, os.O_WRONLY)
-            os.dup2(devnull, 1)  # Redirect stdout to /dev/null
-            os.dup2(devnull, 2)  # Redirect stderr to /dev/null
-
-            return func(*args, **kwargs)
-
-        finally:
-            # Restore the original file descriptors
-            os.dup2(original_stdout_fd, 1)
-            os.dup2(original_stderr_fd, 2)
-
-            # Close the duplicated file descriptors
-            os.close(original_stdout_fd)
-            os.close(original_stderr_fd)
-            os.close(devnull)
-
-    return wrapper
-
+from refactor.utils import suppress_output
 
 def _atom_for_atom_line(line: str):
     index_str, name_str, x, y, z, sybil_atom_type, _, _, partial_charge = line.split()
@@ -237,7 +210,7 @@ def pdb_to_Molecule3D(
         atoms.append(
             Atom3D(
                 index={"pdb": int(pdb_atom.index), "nid": n_id},
-                name=pdb_atom.name.replace("_", ""),
+                name=str(pdb_atom.index-1),
                 element=pdb_atom.element,
                 coordinates=pdb_atom.coordinates,
                 full_valence=FULL_VALENCES[pdb_atom.element.upper()],
@@ -247,6 +220,7 @@ def pdb_to_Molecule3D(
                 mass=MASS[pdb_atom.element],
                 electronegativity=ELECTRONEGATIVITIES[pdb_atom.element]
             )
+        # this is filthy but the fastest way to refactor for user inference
         )
 
     # get pdb bonds
@@ -261,22 +235,15 @@ def pdb_to_Molecule3D(
     )
 
     # convert pdb_bonds to chem_ds bonds
-    pdb_atom_index_name_map = {
-        pdb_atom.index: pdb_atom.name.replace("_", "") for pdb_atom in pdb_atoms
-    }
     bonds = []
     for pdb_bond in pdb_bonds:
-        a1_ind, a2_ind = list(pdb_bond)
-        a1_name, a2_name = (
-            pdb_atom_index_name_map[a1_ind],
-            pdb_atom_index_name_map[a2_ind],
-        )
-        bonds.append((a1_name, a2_name, Bond3D(set((a1_name, a2_name)))))
+        a1_ind, a2_ind = [x-1 for x in pdb_bond]
+        bonds.append((str(a1_ind), str(a2_ind), Bond3D(set((str(a1_ind), str(a2_ind))))))
         bonds[-1][-1].update(
-                force_constant=None,
+                force_constant=0.0,
                 bond_length=get_bond_length(
-                    next(atom for atom in atoms if atom.name == a1_name),
-                    next(atom for atom in atoms if atom.name == a2_name),
+                    next(atom for atom in atoms if int(atom.name) == a1_ind),
+                    next(atom for atom in atoms if int(atom.name) == a2_ind),
                 )
         )
 
@@ -287,9 +254,9 @@ def pdb_to_Molecule3D(
         molecule.assign_bond_orders_and_charges_with_ILP(net_charge=net_charge)
 
         # assign aromatic bonds, hybridisations, actual valences and conjugations
-        molecule.assign_aromatic_bonds()
-        molecule.assign_hybridisations_and_valences()
-        molecule.assign_conjugated_atoms()
+        # molecule.assign_aromatic_bonds()
+        # molecule.assign_hybridisations_and_valences()
+        # molecule.assign_conjugated_atoms()
 
     # print("Mol Name: ", mol_name)
     # print("Atoms: ", molecule.atoms)

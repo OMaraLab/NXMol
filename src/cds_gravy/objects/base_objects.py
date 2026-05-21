@@ -962,8 +962,8 @@ class _2DChemicalObj:
                 ring: [self.bond_orders[bond] for bond in bonds]
                 for (ring, bonds) in ring_bonds.items()
             }
-        except KeyError:
-            raise Exception("Please assign bond orders first.")
+        except KeyError as e:
+            raise Exception("Please assign bond orders first.", e.args[0])
 
         neighbour_counts = self.neighbour_counts
 

@@ -132,8 +132,8 @@ def bonds_for_pdb_line(pdb_line: str) -> List[FrozenSet[int]]:
     }
 
 def get_bond_length(atom1: PDB_Atom, atom2: PDB_Atom) -> float:
-    x1, y1, z1 = atom1.coordinates
-    x2, y2, z2 = atom2.coordinates
+    x1, y1, z1 = [x/10 for x in atom1.coordinates]
+    x2, y2, z2 = [x/10 for x in atom2.coordinates]
     return ((x1 - x2) ** 2 + (y1 - y2) ** 2 + (z1 - z2) ** 2) ** 0.5
 
 def get_attribute_from_pdb_line(attribute: str, line: str) -> Any:
