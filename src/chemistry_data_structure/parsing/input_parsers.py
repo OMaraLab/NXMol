@@ -3,6 +3,7 @@ Parsers for the creation of MolecularEntity objects and their derivatives.
 """
 
 from functools import reduce
+import os
 import re
 from io import StringIO
 
@@ -33,7 +34,6 @@ from chemistry_data_structure.helpers.chem import (
     ELECTRONEGATIVITIES,
     VALENCE_ELECTRONS,
 )
-from chemistry_data_structure.refactor.utils import suppress_output
 
 def _atom_for_atom_line(line: str):
     index_str, name_str, x, y, z, sybil_atom_type, _, _, partial_charge = line.split()
@@ -63,6 +63,33 @@ def _bond_for_atom_line(line: str):
     else:
         bond_order = int(bond_order_str)
     return ([int(atom_id_1), int(atom_id_2)], bond_order)
+
+
+def suppress_output(func):
+    def wrapper(*args, **kwargs):
+        # Save the original file descriptors
+        original_stdout_fd = os.dup(1)
+        original_stderr_fd = os.dup(2)
+
+        try:
+            # Open /dev/null and redirect stdout and stderr
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, 1)  # Redirect stdout to /dev/null
+            os.dup2(devnull, 2)  # Redirect stderr to /dev/null
+
+            return func(*args, **kwargs)
+
+        finally:
+            # Restore the original file descriptors
+            os.dup2(original_stdout_fd, 1)
+            os.dup2(original_stderr_fd, 2)
+
+            # Close the duplicated file descriptors
+            os.close(original_stdout_fd)
+            os.close(original_stderr_fd)
+            os.close(devnull)
+
+    return wrapper
 
 
 @suppress_output

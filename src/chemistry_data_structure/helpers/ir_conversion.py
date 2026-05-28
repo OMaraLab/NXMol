@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import pickle
 import random
 from math import sqrt
 
@@ -11,9 +12,27 @@ from chemistry_data_structure.parsing.hessian_analysis import (
     cal_eigen_matrix,
 )
 from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecule3D
-from chemistry_data_structure.refactor.featurize import load_qm_data
 from scipy.constants import pi, c
 
+
+def load_qm_data(
+    molid: str, data_dir: str = "/home/yaofu/data/atb_fc/NXMol/src/hessian_data"
+):
+    """
+    Load pickled atb hessian data by molid.
+    NOTE: os.walk removes training slashes. DO NOT add training slashes when calling!!!
+
+    @params:
+        molid    - Required  : molecule id (Str)
+    """
+    for dirpath, _, filename in os.walk(data_dir):
+        if dirpath == f"{data_dir}/{molid}":
+            if len(filename) == 1:
+                with open(f"{dirpath}/{filename[0]}", "rb") as fh:
+                    return pickle.load(fh)
+            else:
+                continue
+    raise FileNotFoundError(f"Could not find {molid} in {data_dir}")
 
 def load_fdb_data(fdb_id):
     fdb_fn = json.load(

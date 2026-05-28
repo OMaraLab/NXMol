@@ -14,5 +14,3 @@ Original repo authors: Josef Holownia, Callum Macfarlane
 
 Fork author: Yao Fu
 
-# TODO
-Refactor overlapping code between this and gravy
