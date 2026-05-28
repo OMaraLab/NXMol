@@ -3,9 +3,9 @@ import pprint
 import numpy as np
 from chemistry_data_structure.parsing.input_parsers import ATB_QMData_to_Molecule3D
 from chemistry_data_structure.helpers.ir_conversion import wavenumber_to_gromacs_fc
-from refactor.featurize import load_qm_data
-from refactor.train import init_model, init_process_group, graphDataset, edgeFeatureSAGEConv
-from refactor.utils import load_charges
+from chemistry_data_structure.refactor.featurize import load_qm_data
+from chemistry_data_structure.refactor.train import init_model, init_process_group, graphDataset, edgeFeatureSAGEConv
+from chemistry_data_structure.refactor.utils import load_charges
 
 charges = load_charges("../netcharges_40000.csv")
 qm_data = load_qm_data("21", "../hessian_data_40000")
