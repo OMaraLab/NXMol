@@ -33,7 +33,7 @@ from chemistry_data_structure.helpers.chem import (
     ELECTRONEGATIVITIES,
     VALENCE_ELECTRONS,
 )
-from refactor.utils import suppress_output
+from chemistry_data_structure.refactor.utils import suppress_output
 
 def _atom_for_atom_line(line: str):
     index_str, name_str, x, y, z, sybil_atom_type, _, _, partial_charge = line.split()

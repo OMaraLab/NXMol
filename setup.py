@@ -9,7 +9,7 @@ setup(name='chemistry_data_structure_gravy', version='0.0.1',
       # packages=['src/chemistry_data_structure'],
       packages=find_packages(
           where='src',
-          include=['chemistry_data_structure'],
+          include=['chemistry_data_structure', 'chemistry_data_structure.*'],
           # exclude=['chemistry_data_structure/test*', chemistry_data_structure/test*]
       ),
       package_dir={"": "src"},
